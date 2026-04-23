@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NRDC - 远程桌面控制</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- 顶部状态栏 -->
+    <header id="statusBar">
+        <div class="status-left">
+            <span id="statusIndicator" class="status-dot disconnected"></span>
+            <span id="connectionStatus" class="status-text">未连接</span>
+        </div>
+        <div class="status-center">
+            <span class="brand">NRDC</span>
+        </div>
+        <div class="status-right">
+            <span id="fpsDisplay" class="metric">0 FPS</span>
+            <span id="latencyDisplay" class="metric">-- ms</span>
+            <button id="btnToggleConnect" class="toolbar-btn" title="连接设置">⚙</button>
+        </div>
+    </header>
+
+    <!-- 全屏 Canvas 画布 -->
+    <main id="canvasContainer">
+        <canvas id="remoteDesktop"></canvas>
+        <div id="canvasOverlay" class="overlay">
+            <div class="overlay-content">
+                <div class="logo-icon">
+                    <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                        <rect x="2" y="2" width="60" height="40" rx="4" stroke="#00E5FF" stroke-width="2" fill="none"/>
+                        <rect x="6" y="6" width="52" height="32" rx="1" fill="#0A0E17"/>
+                        <rect x="20" y="42" width="24" height="4" rx="2" stroke="#00E5FF" stroke-width="1.5" fill="none"/>
+                        <rect x="14" y="46" width="36" height="3" rx="1.5" fill="#00E5FF" opacity="0.5"/>
+                    </svg>
+                </div>
+                <h2 class="overlay-title">Network Remote Desktop Control</h2>
+                <p class="overlay-subtitle">点击右下角 <strong>⚙</strong> 按钮或按 <strong>F2</strong> 打开连接面板</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- 侧边工具栏 -->
+    <aside id="sideToolbar" class="toolbar collapsed">
+        <button id="btnFullscreen" class="tool-btn" title="全屏切换">⛶</button>
+        <div class="tool-divider"></div>
+        <button id="btnQualityHigh" class="tool-btn quality-btn" data-quality="0.85" title="高画质">Q+</button>
+        <button id="btnQualityMed" class="tool-btn quality-btn active" data-quality="0.6" title="中画质">Q</button>
+        <button id="btnQualityLow" class="tool-btn quality-btn" data-quality="0.3" title="低画质">Q-</button>
+        <div class="tool-divider"></div>
+        <button id="btnScreenshot" class="tool-btn" title="截图保存">📷</button>
+        <button id="btnToolbarToggle" class="tool-btn" title="折叠工具栏">◀</button>
+    </aside>
+
+    <!-- 底部信息栏 -->
+    <footer id="bottomBar">
+        <div class="shortcut-hints">
+            <span>F11 全屏</span>
+            <span>F2 连接面板</span>
+            <span>Ctrl+Alt+Del 特殊按键</span>
+        </div>
+        <div class="network-info">
+            <span id="resolutionDisplay">--</span>
+        </div>
+    </footer>
+
+    <!-- 连接配置面板（模态弹窗） -->
+    <div id="connectModal" class="modal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h3>连接设置</h3>
+                <button id="btnCloseModal" class="modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="wsUrl">WebSocket 地址</label>
+                    <input type="text" id="wsUrl" placeholder="ws://host:8080/ws" value="">
+                    <small>使用 STOMP 协议通过 SockJS 连接</small>
+                </div>
+                <div class="form-group">
+                    <label for="authToken">认证令牌</label>
+                    <input type="password" id="authToken" placeholder="输入连接令牌">
+                    <small>服务端配置的 nrdc.auth.token</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btnConnect" class="btn btn-primary">连接</button>
+                <button id="btnDisconnect" class="btn btn-danger" disabled>断开</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 通知 -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="/js/client.js"></script>
+</body>
+</html>

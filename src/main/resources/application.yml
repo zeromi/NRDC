@@ -1,0 +1,13 @@
+server:
+  port: 8080
+
+nrdc:
+  capture:
+    fps: 20
+    quality: 0.6
+    diff-threshold: 5
+  auth:
+    token: nrdc-default-token
+  websocket:
+    endpoint: /ws
+    destination-prefix: /topic
