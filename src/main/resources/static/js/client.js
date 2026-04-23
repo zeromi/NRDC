@@ -32,8 +32,13 @@ class NRDCClient {
         this.screenWidth = 0;
         this.screenHeight = 0;
 
+        // 远程帧图像的实际尺寸，用于判断是否需要更新 canvas
+        this.imageWidth = 0;
+        this.imageHeight = 0;
+
         this.initDOM();
         this.bindEvents();
+        this.updateCanvasSize();
     }
 
     initDOM() {
@@ -90,6 +95,12 @@ class NRDCClient {
 
         // 模态弹窗背景点击关闭
         this.dom.connectModal.querySelector('.modal-backdrop').addEventListener('click', () => this.closeModal());
+
+        // 窗口大小变化 / 全屏切换时更新 canvas 分辨率
+        window.addEventListener('resize', () => this.updateCanvasSize());
+        document.addEventListener('fullscreenchange', () => {
+            this.updateCanvasSize();
+        });
     }
 
     // ===== 连接管理 =====
@@ -253,6 +264,19 @@ class NRDCClient {
         }
     }
 
+    // ===== Canvas 尺寸管理 =====
+
+    updateCanvasSize() {
+        const container = document.getElementById('canvasContainer');
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (w > 0 && h > 0) {
+            this.canvas.width = w;
+            this.canvas.height = h;
+            this.canvasInited = true;
+        }
+    }
+
     // ===== 渲染 =====
 
     scheduleRender() {
@@ -274,14 +298,28 @@ class NRDCClient {
         const blob = new Blob([buffer], { type: 'image/jpeg' });
         const url = URL.createObjectURL(blob);
         this.renderImage.onload = () => {
-            // 仅在分辨率变化时重设 canvas 尺寸（避免触发重排）
-            if (!this.canvasInited || this.canvas.width !== this.renderImage.width || this.canvas.height !== this.renderImage.height) {
-                this.canvas.width = this.renderImage.width;
-                this.canvas.height = this.renderImage.height;
-                this.canvasInited = true;
-            }
+            this.imageWidth = this.renderImage.width;
+            this.imageHeight = this.renderImage.height;
 
-            this.ctx.drawImage(this.renderImage, 0, 0);
+            const cw = this.canvas.width;
+            const ch = this.canvas.height;
+
+            // 启用高质量图像缩放
+            this.ctx.imageSmoothingEnabled = true;
+            this.ctx.imageSmoothingQuality = 'high';
+
+            // 计算保持宽高比的绘制区域（letterbox）
+            const scaleX = cw / this.imageWidth;
+            const scaleY = ch / this.imageHeight;
+            const scale = Math.min(scaleX, scaleY);
+            const dw = Math.round(this.imageWidth * scale);
+            const dh = Math.round(this.imageHeight * scale);
+            const dx = Math.round((cw - dw) / 2);
+            const dy = Math.round((ch - dh) / 2);
+
+            this.ctx.fillStyle = '#0A0E17';
+            this.ctx.fillRect(0, 0, cw, ch);
+            this.ctx.drawImage(this.renderImage, dx, dy, dw, dh);
             URL.revokeObjectURL(url);
 
             this.updateFps();
@@ -317,13 +355,34 @@ class NRDCClient {
 
     getCanvasCoords(e) {
         const rect = this.canvas.getBoundingClientRect();
-        // 用实际桌面分辨率做映射（screenWidth/Height 由服务端 SCREEN_INFO 消息提供）
-        // 若尚未收到则回退到 canvas 像素尺寸
-        const targetW = this.screenWidth || this.canvas.width;
-        const targetH = this.screenHeight || this.canvas.height;
+        if (!this.imageWidth || !this.imageHeight) return { x: 0, y: 0 };
+
+        // Canvas 像素尺寸与 CSS 显示尺寸的比例（处理 devicePixelRatio）
+        const cssW = rect.width;
+        const cssH = rect.height;
+        const pixelW = this.canvas.width;
+        const pixelH = this.canvas.height;
+
+        // 鼠标在 canvas 像素空间中的位置
+        const px = (e.clientX - rect.left) / cssW * pixelW;
+        const py = (e.clientY - rect.top) / cssH * pixelH;
+
+        // 计算绘制区域（与 processFrameQueue 中的 letterbox 逻辑一致）
+        const scaleX = pixelW / this.imageWidth;
+        const scaleY = pixelH / this.imageHeight;
+        const scale = Math.min(scaleX, scaleY);
+        const dw = this.imageWidth * scale;
+        const dh = this.imageHeight * scale;
+        const dx = (pixelW - dw) / 2;
+        const dy = (pixelH - dh) / 2;
+
+        // 映射到远程桌面坐标
+        const targetW = this.screenWidth || this.imageWidth;
+        const targetH = this.screenHeight || this.imageHeight;
+
         return {
-            x: Math.round((e.clientX - rect.left) / rect.width * targetW),
-            y: Math.round((e.clientY - rect.top) / rect.height * targetH),
+            x: Math.max(0, Math.min(targetW - 1, Math.round((px - dx) / scale))),
+            y: Math.max(0, Math.min(targetH - 1, Math.round((py - dy) / scale))),
         };
     }
 
@@ -433,9 +492,26 @@ class NRDCClient {
             this.showToast('请先连接远程桌面', 'error');
             return;
         }
+        // 裁剪出实际绘制区域（去除 letterbox 黑边）
+        const pixelW = this.canvas.width;
+        const pixelH = this.canvas.height;
+        const scaleX = pixelW / this.imageWidth;
+        const scaleY = pixelH / this.imageHeight;
+        const scale = Math.min(scaleX, scaleY);
+        const dw = Math.round(this.imageWidth * scale);
+        const dh = Math.round(this.imageHeight * scale);
+        const dx = Math.round((pixelW - dw) / 2);
+        const dy = Math.round((pixelH - dh) / 2);
+
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = this.imageWidth;
+        tmpCanvas.height = this.imageHeight;
+        const tmpCtx = tmpCanvas.getContext('2d');
+        tmpCtx.drawImage(this.canvas, dx, dy, dw, dh, 0, 0, this.imageWidth, this.imageHeight);
+
         const link = document.createElement('a');
         link.download = 'nrdc-screenshot-' + Date.now() + '.png';
-        link.href = this.canvas.toDataURL('image/png');
+        link.href = tmpCanvas.toDataURL('image/png');
         link.click();
         this.showToast('截图已保存', 'success');
     }

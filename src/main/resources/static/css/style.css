@@ -160,6 +160,37 @@ body {
     box-shadow: 0 0 40px rgba(0, 229, 255, 0.05);
 }
 
+/* ===== 全屏模式 ===== */
+:fullscreen #statusBar,
+:fullscreen #bottomBar {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+:fullscreen #statusBar:hover,
+:fullscreen #bottomBar:hover {
+    opacity: 1;
+    pointer-events: all;
+}
+
+:fullscreen #canvasContainer {
+    top: 0;
+    bottom: 0;
+}
+
+:fullscreen #sideToolbar {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+:fullscreen #sideToolbar:hover,
+:fullscreen #sideToolbar:not(.collapsed) {
+    opacity: 1;
+    pointer-events: all;
+}
+
 /* 未连接覆盖层 */
 #canvasOverlay {
     position: absolute;
