@@ -8,6 +8,7 @@
 - 🖱️ **远程键鼠控制** - 在浏览器中操控远程设备鼠标和键盘
 - 🔐 **用户名密码鉴权** - Challenge-Response 机制，密码摘要传输，防止未授权访问
 - 📊 **帧率画质可调** - 动态调节画面流畅度和画质
+- 🧩 **区域差分编码** - 块级帧差分检测，仅传输屏幕变化区域，带宽节省 50-95%
 - 🖥️ **跨平台** - 支持 Windows 和 Linux（X11/Xvfb）
 - 🎨 **Cyberpunk UI** - 暗色科技风界面，支持全屏模式
 
@@ -45,9 +46,8 @@ java -jar target/nrdc-1.0.0-SNAPSHOT.jar
 
 1. 打开 `http://localhost:8080`
 2. 按 `F2` 或点击右上角 ⚙ 按钮打开连接面板
-3. 输入 WebSocket 地址：`ws://localhost:8080/ws`
-4. 输入认证令牌：`nrdc-default-token`（可在 `application.yml` 中修改）
-5. 点击「连接」
+3. 输入用户名和密码（默认：`admin` / `admin`，可在 `application.yml` 中修改）
+4. 点击「连接」
 
 ### Linux Headless 环境
 
@@ -73,10 +73,17 @@ server:
 
 nrdc:
   capture:
-    fps: 20              # 帧率 (5-30)
-    quality: 0.6         # JPEG 质量 (0.1-1.0)
+    fps: 30                 # 帧率 (5-30)
+    quality: 0.6            # JPEG 质量 (0.1-1.0)
+    image-format: jpg       # 编码格式: jpg（有损，带宽低）/ png（无损，画质高）
+    scale-factor: 1.0       # 缩放比例 (0.25-1.0)，1.0 为原始分辨率
+    block-size: 128         # 差分编码块大小（像素），范围 32-512
+    keyframe-interval: 60   # 每 N 帧强制发送关键帧
+    max-diff-ratio: 0.5     # 超过此比例块变化时退回全帧 (0.1-0.9)
   auth:
-    token: your-secret   # 修改为你的令牌
+    token: your-secret       # 修改为你的令牌
+    username: admin          # 登录用户名
+    password: admin          # 登录密码
 ```
 
 ## 快捷键

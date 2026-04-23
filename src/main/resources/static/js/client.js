@@ -1,6 +1,7 @@
 /**
  * NRDC - Network Remote Desktop Control
  * 客户端核心逻辑：WebSocket 连接管理、Canvas 渲染、事件捕获
+ * 支持全帧 (FULL_FRAME) 和差分帧 (DIFF_FRAME) 二进制协议
  */
 
 class NRDCClient {
@@ -21,11 +22,10 @@ class NRDCClient {
         this.lastFpsTime = Date.now();
         this.displayFps = 0;
         this.currentQuality = 0.6;
+        this.imageFormat = 'jpeg';
 
-        // 渲染优化：可复用 Image 对象 + 帧队列
+        // 渲染优化
         this.renderImage = new Image();
-        this.frameQueue = [];
-        this.rendering = false;
         this.canvasInited = false;
 
         // 远程桌面实际分辨率（由服务端通知），用于鼠标坐标映射
@@ -35,6 +35,21 @@ class NRDCClient {
         // 远程帧图像的实际尺寸，用于判断是否需要更新 canvas
         this.imageWidth = 0;
         this.imageHeight = 0;
+
+        // 离屏 Canvas：差分帧合成用
+        this.offscreenCanvas = document.createElement('canvas');
+        this.offscreenCtx = this.offscreenCanvas.getContext('2d');
+        this.offscreenReady = false;
+
+        // 帧序列号：丢弃过期帧
+        this.frameSequence = 0;
+
+        // 合成调度标记
+        this.compositeScheduled = false;
+
+        // 帧类型常量（与服务端协议一致）
+        this.FULL_FRAME = 0x01;
+        this.DIFF_FRAME = 0x02;
 
         this.initDOM();
         this.bindEvents();
@@ -285,21 +300,169 @@ class NRDCClient {
 
     onMessage(e) {
         if (e.data instanceof ArrayBuffer) {
-            this.frameQueue.push(e.data);
-            if (this.frameQueue.length > 2) {
-                this.frameQueue.shift();
-            }
-            this.scheduleRender();
+            this.handleBinaryMessage(new Uint8Array(e.data));
         } else if (typeof e.data === 'string') {
             try {
                 const msg = JSON.parse(e.data);
                 if (msg.type === 'SCREEN_INFO') {
                     this.screenWidth = msg.width;
                     this.screenHeight = msg.height;
+                    this.imageFormat = msg.imageFormat === 'png' ? 'png' : 'jpeg';
                     this.dom.resolutionDisplay.textContent = msg.width + 'x' + msg.height;
                 }
             } catch (err) { /* ignore non-JSON text */ }
         }
+    }
+
+    /**
+     * 解析二进制协议帧消息
+     * 协议:
+     *   FULL_FRAME (0x01): [type][完整图像数据]
+     *   DIFF_FRAME (0x02): [type][blockW][blockH][gridCols][gridRows][count] + [col][row][len][blockData]...
+     */
+    handleBinaryMessage(data) {
+        if (data.length === 0) return;
+
+        const frameType = data[0];
+        const payload = data.slice(1);
+
+        if (frameType === this.FULL_FRAME) {
+            this.processFullFrame(payload);
+        } else if (frameType === this.DIFF_FRAME) {
+            this.processDiffFrame(payload);
+        }
+    }
+
+    /**
+     * 处理全帧：绘制到离屏 Canvas + 合成到屏幕
+     */
+    processFullFrame(imageData) {
+        const blob = new Blob([imageData], { type: 'image/' + this.imageFormat });
+        const url = URL.createObjectURL(blob);
+
+        const seq = ++this.frameSequence;
+        this.renderImage.onload = () => {
+            if (seq !== this.frameSequence) {
+                URL.revokeObjectURL(url);
+                return;
+            }
+
+            // 更新离屏 Canvas
+            this.offscreenCanvas.width = this.renderImage.width;
+            this.offscreenCanvas.height = this.renderImage.height;
+            this.offscreenCtx.drawImage(this.renderImage, 0, 0);
+            this.offscreenReady = true;
+
+            this.imageWidth = this.renderImage.width;
+            this.imageHeight = this.renderImage.height;
+
+            URL.revokeObjectURL(url);
+            this.requestComposite();
+        };
+        this.renderImage.src = url;
+    }
+
+    /**
+     * 处理差分帧：解析块数据，绘制到离屏 Canvas，合成到屏幕
+     */
+    processDiffFrame(data) {
+        if (!this.offscreenReady || data.length < 10) return;
+
+        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        let offset = 0;
+
+        const blockWidth = view.getUint16(offset); offset += 2;
+        const blockHeight = view.getUint16(offset); offset += 2;
+        const gridCols = view.getUint16(offset); offset += 2;
+        const gridRows = view.getUint16(offset); offset += 2;
+        const changedCount = view.getUint16(offset); offset += 2;
+
+        if (changedCount === 0) return;
+
+        const seq = ++this.frameSequence;
+        let remaining = changedCount;
+        const self = this;
+
+        for (let i = 0; i < changedCount; i++) {
+            const col = view.getUint16(offset); offset += 2;
+            const row = view.getUint16(offset); offset += 2;
+            const dataLength = view.getUint32(offset); offset += 4;
+
+            if (offset + dataLength > data.length) break; // 数据截断，丢弃
+
+            const blockData = data.slice(offset, offset + dataLength);
+            offset += dataLength;
+
+            const blob = new Blob([blockData], { type: 'image/' + this.imageFormat });
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+
+            img.onload = function () {
+                if (seq !== self.frameSequence) {
+                    URL.revokeObjectURL(url);
+                    return;
+                }
+                self.offscreenCtx.drawImage(this, col * blockWidth, row * blockHeight);
+                URL.revokeObjectURL(url);
+                remaining--;
+                if (remaining === 0) {
+                    self.requestComposite();
+                }
+            };
+
+            img.onerror = function () {
+                URL.revokeObjectURL(url);
+                remaining--;
+                if (remaining === 0) {
+                    self.requestComposite();
+                }
+            };
+
+            img.src = url;
+        }
+    }
+
+    /**
+     * 请求合成到屏幕（通过 requestAnimationFrame 批量合并）
+     */
+    requestComposite() {
+        if (!this.compositeScheduled) {
+            this.compositeScheduled = true;
+            requestAnimationFrame(() => {
+                this.compositeScheduled = false;
+                this.compositeToScreen();
+                this.updateFps();
+            });
+        }
+    }
+
+    /**
+     * 将离屏 Canvas 合成到可见 Canvas（含 letterbox）
+     */
+    compositeToScreen() {
+        if (!this.offscreenReady || !this.canvasInited) return;
+
+        const cw = this.canvas.width;
+        const ch = this.canvas.height;
+        const ow = this.offscreenCanvas.width;
+        const oh = this.offscreenCanvas.height;
+
+        if (ow === 0 || oh === 0) return;
+
+        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.imageSmoothingQuality = 'high';
+
+        const scaleX = cw / ow;
+        const scaleY = ch / oh;
+        const scale = Math.min(scaleX, scaleY);
+        const dw = Math.round(ow * scale);
+        const dh = Math.round(oh * scale);
+        const dx = Math.round((cw - dw) / 2);
+        const dy = Math.round((ch - dh) / 2);
+
+        this.ctx.fillStyle = '#0A0E17';
+        this.ctx.fillRect(0, 0, cw, ch);
+        this.ctx.drawImage(this.offscreenCanvas, dx, dy, dw, dh);
     }
 
     // ===== Canvas 尺寸管理 =====
@@ -313,63 +476,6 @@ class NRDCClient {
             this.canvas.height = h;
             this.canvasInited = true;
         }
-    }
-
-    // ===== 渲染 =====
-
-    scheduleRender() {
-        if (this.rendering) return;
-        this.rendering = true;
-        requestAnimationFrame(() => this.processFrameQueue());
-    }
-
-    processFrameQueue() {
-        if (this.frameQueue.length === 0) {
-            this.rendering = false;
-            return;
-        }
-
-        // 仅取最新帧，丢弃中间帧
-        const buffer = this.frameQueue[this.frameQueue.length - 1];
-        this.frameQueue.length = 0;
-
-        const blob = new Blob([buffer], { type: 'image/png' });
-        const url = URL.createObjectURL(blob);
-        this.renderImage.onload = () => {
-            this.imageWidth = this.renderImage.width;
-            this.imageHeight = this.renderImage.height;
-
-            const cw = this.canvas.width;
-            const ch = this.canvas.height;
-
-            // 启用高质量图像缩放
-            this.ctx.imageSmoothingEnabled = true;
-            this.ctx.imageSmoothingQuality = 'high';
-
-            // 计算保持宽高比的绘制区域（letterbox）
-            const scaleX = cw / this.imageWidth;
-            const scaleY = ch / this.imageHeight;
-            const scale = Math.min(scaleX, scaleY);
-            const dw = Math.round(this.imageWidth * scale);
-            const dh = Math.round(this.imageHeight * scale);
-            const dx = Math.round((cw - dw) / 2);
-            const dy = Math.round((ch - dh) / 2);
-
-            this.ctx.fillStyle = '#0A0E17';
-            this.ctx.fillRect(0, 0, cw, ch);
-            this.ctx.drawImage(this.renderImage, dx, dy, dw, dh);
-            URL.revokeObjectURL(url);
-
-            this.updateFps();
-
-            // 继续处理队列中的下一帧
-            if (this.frameQueue.length > 0) {
-                requestAnimationFrame(() => this.processFrameQueue());
-            } else {
-                this.rendering = false;
-            }
-        };
-        this.renderImage.src = url;
     }
 
     updateFps() {
@@ -395,17 +501,14 @@ class NRDCClient {
         const rect = this.canvas.getBoundingClientRect();
         if (!this.imageWidth || !this.imageHeight) return { x: 0, y: 0 };
 
-        // Canvas 像素尺寸与 CSS 显示尺寸的比例（处理 devicePixelRatio）
         const cssW = rect.width;
         const cssH = rect.height;
         const pixelW = this.canvas.width;
         const pixelH = this.canvas.height;
 
-        // 鼠标在 canvas 像素空间中的位置
         const px = (e.clientX - rect.left) / cssW * pixelW;
         const py = (e.clientY - rect.top) / cssH * pixelH;
 
-        // 计算绘制区域（与 processFrameQueue 中的 letterbox 逻辑一致）
         const scaleX = pixelW / this.imageWidth;
         const scaleY = pixelH / this.imageHeight;
         const scale = Math.min(scaleX, scaleY);
@@ -414,7 +517,6 @@ class NRDCClient {
         const dx = (pixelW - dw) / 2;
         const dy = (pixelH - dh) / 2;
 
-        // 映射到远程桌面坐标
         const targetW = this.screenWidth || this.imageWidth;
         const targetH = this.screenHeight || this.imageHeight;
 
@@ -431,7 +533,7 @@ class NRDCClient {
 
     onMouseDown(e) {
         const coords = this.getCanvasCoords(e);
-        const button = e.button + 1; // 转为 1/2/3
+        const button = e.button + 1;
         this.sendEvent({ type: 'MOUSE_PRESS', x: coords.x, y: coords.y, button, timestamp: Date.now() });
     }
 
@@ -443,12 +545,11 @@ class NRDCClient {
 
     onMouseWheel(e) {
         e.preventDefault();
-        const delta = Math.sign(e.deltaY) * -1 * 3; // 归一化
+        const delta = Math.sign(e.deltaY) * -1 * 3;
         this.sendEvent({ type: 'MOUSE_WHEEL', wheelDelta: delta, timestamp: Date.now() });
     }
 
     mapKeyCode(e) {
-        // 浏览器 key -> Java AWT KeyEvent VK_* 映射
         const keyMap = {
             'Backspace': 8, 'Tab': 9, 'Enter': 10, 'ShiftLeft': 16, 'ShiftRight': 16,
             'ControlLeft': 17, 'ControlRight': 17, 'AltLeft': 18, 'AltRight': 18,
@@ -463,13 +564,11 @@ class NRDCClient {
             return keyMap[e.code];
         }
 
-        // F1-F12
         const fMatch = e.code.match(/^F(\d+)$/);
         if (fMatch) {
-            return 111 + parseInt(fMatch[1]); // VK_F1=112, etc.
+            return 111 + parseInt(fMatch[1]);
         }
 
-        // 数字和小写字母直接映射到 keyCode
         if (e.key.length === 1) {
             return e.key.toUpperCase().charCodeAt(0);
         }
@@ -479,7 +578,6 @@ class NRDCClient {
 
     onKeyDown(e) {
         if (this.state !== 'connected') return;
-        // 防止 F11/F2 被当输入事件发送
         if (e.key === 'F11' || e.key === 'F2') return;
 
         const keyCode = this.mapKeyCode(e);
@@ -530,22 +628,13 @@ class NRDCClient {
             this.showToast('请先连接远程桌面', 'error');
             return;
         }
-        // 裁剪出实际绘制区域（去除 letterbox 黑边）
-        const pixelW = this.canvas.width;
-        const pixelH = this.canvas.height;
-        const scaleX = pixelW / this.imageWidth;
-        const scaleY = pixelH / this.imageHeight;
-        const scale = Math.min(scaleX, scaleY);
-        const dw = Math.round(this.imageWidth * scale);
-        const dh = Math.round(this.imageHeight * scale);
-        const dx = Math.round((pixelW - dw) / 2);
-        const dy = Math.round((pixelH - dh) / 2);
-
+        // 从离屏 Canvas 截图（保证完整分辨率）
+        const sourceCanvas = this.offscreenReady ? this.offscreenCanvas : this.canvas;
         const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = this.imageWidth;
-        tmpCanvas.height = this.imageHeight;
+        tmpCanvas.width = sourceCanvas.width;
+        tmpCanvas.height = sourceCanvas.height;
         const tmpCtx = tmpCanvas.getContext('2d');
-        tmpCtx.drawImage(this.canvas, dx, dy, dw, dh, 0, 0, this.imageWidth, this.imageHeight);
+        tmpCtx.drawImage(sourceCanvas, 0, 0);
 
         const link = document.createElement('a');
         link.download = 'nrdc-screenshot-' + Date.now() + '.png';

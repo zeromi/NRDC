@@ -38,6 +38,10 @@ public class AppProperties {
         private double quality = 0.6;
         private int diffThreshold = 5;
         private double scaleFactor = 0.5;
+        private String imageFormat = "jpg";
+        private int blockSize = 128;
+        private int keyframeInterval = 60;
+        private double maxDiffRatio = 0.5;
 
         public int getFps() {
             return fps;
@@ -69,6 +73,38 @@ public class AppProperties {
 
         public void setScaleFactor(double scaleFactor) {
             this.scaleFactor = scaleFactor;
+        }
+
+        public String getImageFormat() {
+            return imageFormat;
+        }
+
+        public void setImageFormat(String imageFormat) {
+            this.imageFormat = imageFormat;
+        }
+
+        public int getBlockSize() {
+            return blockSize;
+        }
+
+        public void setBlockSize(int blockSize) {
+            this.blockSize = blockSize;
+        }
+
+        public int getKeyframeInterval() {
+            return keyframeInterval;
+        }
+
+        public void setKeyframeInterval(int keyframeInterval) {
+            this.keyframeInterval = keyframeInterval;
+        }
+
+        public double getMaxDiffRatio() {
+            return maxDiffRatio;
+        }
+
+        public void setMaxDiffRatio(double maxDiffRatio) {
+            this.maxDiffRatio = maxDiffRatio;
         }
     }
 

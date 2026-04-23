@@ -47,14 +47,21 @@ public class ScreenBroadcaster {
     @PostConstruct
     public void init() {
         encoderService.setQuality(appProperties.getCapture().getQuality());
+        encoderService.setImageFormat(appProperties.getCapture().getImageFormat());
         if (appProperties.getCapture().getScaleFactor() > 0) {
             encoderService.setScaleFactor(appProperties.getCapture().getScaleFactor());
         }
+        encoderService.setBlockSize(appProperties.getCapture().getBlockSize());
+        encoderService.setKeyframeInterval(appProperties.getCapture().getKeyframeInterval());
+        encoderService.setMaxDiffRatio(appProperties.getCapture().getMaxDiffRatio());
         lastFpsTime = System.currentTimeMillis();
-        log.info("屏幕广播服务启动，FPS: {}, 质量: {}, 缩放: {}",
+        log.info("屏幕广播服务启动，FPS: {}, 质量: {}, 缩放: {}, 格式: {}, 块大小: {}, 关键帧间隔: {}",
                 appProperties.getCapture().getFps(),
                 appProperties.getCapture().getQuality(),
-                encoderService.getScaleFactor());
+                encoderService.getScaleFactor(),
+                encoderService.getImageFormat(),
+                encoderService.getBlockSize(),
+                encoderService.getKeyframeInterval());
     }
 
     @Scheduled(fixedRateString = "${nrdc.capture.interval-ms:33}")
