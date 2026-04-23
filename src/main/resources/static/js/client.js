@@ -331,7 +331,7 @@ class NRDCClient {
         const buffer = this.frameQueue[this.frameQueue.length - 1];
         this.frameQueue.length = 0;
 
-        const blob = new Blob([buffer], { type: 'image/jpeg' });
+        const blob = new Blob([buffer], { type: 'image/png' });
         const url = URL.createObjectURL(blob);
         this.renderImage.onload = () => {
             this.imageWidth = this.renderImage.width;

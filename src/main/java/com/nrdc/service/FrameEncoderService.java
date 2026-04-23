@@ -4,17 +4,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
-import javax.imageio.ImageWriteParam;
-import javax.imageio.ImageWriter;
-import javax.imageio.stream.ImageOutputStream;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Iterator;
 
 @Service
 public class FrameEncoderService {
@@ -26,27 +21,18 @@ public class FrameEncoderService {
     private BufferedImage previousFrame;
     private int[] previousPixels;
 
-    private ImageWriter cachedWriter;
-    private ImageWriteParam cachedWriteParam;
-
     private int scaledWidth;
     private int scaledHeight;
     private boolean initialized = false;
     private BufferedImage reusableScaledBuffer;
 
     /**
-     * 初始化 ImageWriter（线程安全，仅调用一次）
+     * 初始化（线程安全，仅调用一次）
      */
     private synchronized void ensureInitialized() {
         if (initialized) return;
-        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpeg");
-        if (writers.hasNext()) {
-            cachedWriter = writers.next();
-            cachedWriteParam = cachedWriter.getDefaultWriteParam();
-            cachedWriteParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-            cachedWriteParam.setCompressionQuality((float) quality);
-        } else {
-            throw new RuntimeException("No JPEG ImageWriter found");
+        if (!ImageIO.getImageWritersByFormatName("png").hasNext()) {
+            throw new RuntimeException("No PNG ImageWriter found");
         }
         initialized = true;
     }
@@ -116,7 +102,7 @@ public class FrameEncoderService {
     }
 
     /**
-     * 编码帧：差分检测 → 缩放 → JPEG 压缩
+     * 编码帧：差分检测 → 缩放 → PNG 编码
      *
      * @return 编码后的字节数组，无变化时返回空数组
      */
@@ -132,8 +118,8 @@ public class FrameEncoderService {
         updateScaledSize(frame.getWidth(), frame.getHeight());
         BufferedImage scaled = scaleImage(frame);
 
-        // 3) JPEG 编码
-        return compressJpeg(scaled);
+        // 3) PNG 编码
+        return compressPng(scaled);
     }
 
     /**
@@ -148,14 +134,11 @@ public class FrameEncoderService {
     }
 
     /**
-     * JPEG 压缩（复用 ImageWriter）
+     * PNG 编码
      */
-    private byte[] compressJpeg(BufferedImage image) {
+    private byte[] compressPng(BufferedImage image) {
         try (var baos = new ByteArrayOutputStream()) {
-            ImageOutputStream ios = ImageIO.createImageOutputStream(baos);
-            cachedWriter.setOutput(ios);
-            cachedWriter.write(null, new IIOImage(image, null, null), cachedWriteParam);
-            ios.flush();
+            ImageIO.write(image, "png", baos);
             return baos.toByteArray();
         } catch (IOException e) {
             log.error("帧编码失败: {}", e.getMessage());
@@ -172,10 +155,8 @@ public class FrameEncoderService {
     }
 
     public void setQuality(double quality) {
+        // PNG 为无损格式，不支持质量参数，此方法保留兼容性
         this.quality = Math.max(0.1, Math.min(1.0, quality));
-        if (cachedWriteParam != null) {
-            cachedWriteParam.setCompressionQuality((float) this.quality);
-        }
     }
 
     public void setScaleFactor(double scaleFactor) {
