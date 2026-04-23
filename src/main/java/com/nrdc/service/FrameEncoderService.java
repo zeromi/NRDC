@@ -4,12 +4,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.Iterator;
 
 @Service
 public class FrameEncoderService {
@@ -25,13 +30,26 @@ public class FrameEncoderService {
     private int scaledHeight;
     private boolean initialized = false;
     private BufferedImage reusableScaledBuffer;
+    private ImageWriter pngWriter;
+    private ImageWriteParam pngWriteParam;
 
     /**
-     * 初始化（线程安全，仅调用一次）
+     * 初始化 PNG ImageWriter，启用最高 deflate 压缩等级
      */
     private synchronized void ensureInitialized() {
         if (initialized) return;
-        if (!ImageIO.getImageWritersByFormatName("png").hasNext()) {
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("png");
+        if (writers.hasNext()) {
+            pngWriter = writers.next();
+            pngWriteParam = pngWriter.getDefaultWriteParam();
+            if (pngWriteParam.canWriteCompressed()) {
+                pngWriteParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                // Deflate 压缩等级 0-9，9 为最高压缩比
+                pngWriteParam.setCompressionType("Deflate");
+                pngWriteParam.setCompressionQuality(0.0f); // 0.0 = 最高压缩, 1.0 = 无压缩
+            }
+            log.info("PNG 编码器初始化完成，启用 Deflate 最高压缩");
+        } else {
             throw new RuntimeException("No PNG ImageWriter found");
         }
         initialized = true;
@@ -134,11 +152,14 @@ public class FrameEncoderService {
     }
 
     /**
-     * PNG 编码
+     * PNG 编码（最高 Deflate 压缩等级，复用 ImageWriter）
      */
     private byte[] compressPng(BufferedImage image) {
         try (var baos = new ByteArrayOutputStream()) {
-            ImageIO.write(image, "png", baos);
+            ImageOutputStream ios = ImageIO.createImageOutputStream(baos);
+            pngWriter.setOutput(ios);
+            pngWriter.write(null, new IIOImage(image, null, null), pngWriteParam);
+            ios.flush();
             return baos.toByteArray();
         } catch (IOException e) {
             log.error("帧编码失败: {}", e.getMessage());

@@ -281,6 +281,8 @@ class NRDCClient {
         this.dom.connectionStatus.textContent = text;
     }
 
+    // ===== 消息处理 =====
+
     onMessage(e) {
         if (e.data instanceof ArrayBuffer) {
             this.frameQueue.push(e.data);

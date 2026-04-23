@@ -3,7 +3,7 @@ package com.nrdc.websocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
@@ -30,7 +30,7 @@ public class SessionManager {
         for (WebSocketSession session : sessions) {
             if (session.isOpen()) {
                 try {
-                    session.sendMessage(new org.springframework.web.socket.BinaryMessage(frameData));
+                    session.sendMessage(new BinaryMessage(frameData));
                 } catch (IOException e) {
                     log.error("向客户端发送帧数据失败: {}", e.getMessage());
                     removeSession(session);
