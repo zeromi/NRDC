@@ -48,8 +48,8 @@ class NRDCClient {
             fpsDisplay: document.getElementById('fpsDisplay'),
             latencyDisplay: document.getElementById('latencyDisplay'),
             resolutionDisplay: document.getElementById('resolutionDisplay'),
-            wsUrl: document.getElementById('wsUrl'),
-            authToken: document.getElementById('authToken'),
+            username: document.getElementById('username'),
+            password: document.getElementById('password'),
             connectModal: document.getElementById('connectModal'),
             canvasOverlay: document.getElementById('canvasOverlay'),
             sideToolbar: document.getElementById('sideToolbar'),
@@ -113,25 +113,61 @@ class NRDCClient {
         this.dom.connectModal.classList.remove('open');
     }
 
-    connect() {
-        const url = this.dom.wsUrl.value.trim();
-        const token = this.dom.authToken.value.trim();
+    async connect() {
+        const username = this.dom.username.value.trim();
+        const password = this.dom.password.value.trim();
 
-        if (!url) {
-            this.showToast('请输入 WebSocket 地址', 'error');
+        if (!username) {
+            this.showToast('请输入用户名', 'error');
             return;
         }
-        if (!token) {
-            this.showToast('请输入认证令牌', 'error');
+        if (!password) {
+            this.showToast('请输入密码', 'error');
             return;
         }
-
-        const separator = url.includes('?') ? '&' : '?';
-        this.connectUrl = url + separator + 'token=' + encodeURIComponent(token);
 
         this.manualClose = false;
         this.reconnectAttempts = 0;
-        this.doConnect();
+
+        try {
+            this.setState('connecting');
+
+            // 1. 获取服务端 challenge
+            const chResp = await fetch('/api/challenge');
+            const chData = await chResp.json();
+            if (!chResp.ok) {
+                this.showToast('获取验证挑战失败', 'error');
+                this.setState('disconnected');
+                return;
+            }
+            const challenge = chData.challenge;
+
+            // 2. 计算 SHA-256(challenge + password) 作为响应，密码不离开浏览器
+            const encoder = new TextEncoder();
+            const data = encoder.encode(challenge + password);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const response = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+            // 3. 发送用户名 + challenge + response 进行登录
+            const resp = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, challenge, response }),
+            });
+            const loginData = await resp.json();
+            if (!resp.ok) {
+                this.showToast(loginData.error || '登录失败', 'error');
+                this.setState('disconnected');
+                return;
+            }
+            this.connectUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://')
+                + location.host + '/ws?token=' + encodeURIComponent(loginData.token);
+            this.doConnect();
+        } catch (err) {
+            this.showToast('登录请求失败: ' + err.message, 'error');
+            this.setState('disconnected');
+        }
     }
 
     doConnect() {

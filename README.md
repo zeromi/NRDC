@@ -6,7 +6,7 @@
 
 - 🖥️ **实时屏幕共享** - 浏览器中实时查看远程桌面画面
 - 🖱️ **远程键鼠控制** - 在浏览器中操控远程设备鼠标和键盘
-- 🔐 **Token 鉴权** - 连接认证，防止未授权访问
+- 🔐 **用户名密码鉴权** - Challenge-Response 机制，密码摘要传输，防止未授权访问
 - 📊 **帧率画质可调** - 动态调节画面流畅度和画质
 - 🖥️ **跨平台** - 支持 Windows 和 Linux（X11/Xvfb）
 - 🎨 **Cyberpunk UI** - 暗色科技风界面，支持全屏模式
@@ -92,10 +92,11 @@ nrdc:
 ```
 src/main/java/com/nrdc/
 ├── config/       # 配置类（WebSocket、CORS、属性绑定）
+├── controller/   # REST 控制器（登录接口）
 ├── websocket/    # WebSocket 处理器与会话管理
 ├── service/      # 屏幕捕获、帧编码、输入分发
 ├── dto/          # 数据传输对象
-└── auth/         # 鉴权拦截器
+└── auth/         # 鉴权拦截器与 Token 管理
 ```
 
 ## License

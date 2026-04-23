@@ -10,6 +10,8 @@ nrdc:
     scale-factor: 1.0
   auth:
     token: nrdc-default-token
+    username: admin
+    password: admin
   websocket:
     endpoint: /ws
     destination-prefix: /topic

@@ -20,7 +20,7 @@
 2. **远程键鼠操控** - 浏览器端捕获鼠标/键盘事件，JSON 序列化后发送至服务端，通过 Robot 模拟执行
 3. **跨平台支持** - 兼容 Windows 和 Linux（X11）环境
 4. **WebSocket 全双工通信** - 支持二进制帧传输屏幕数据，JSON 传输控制指令
-5. **连接认证** - 通过 token 令牌进行握手鉴权
+5. **用户名密码鉴权** - 通过登录接口验证用户名密码，获取一次性会话 Token 用于 WebSocket 握手
 6. **帧率与画质调节** - 可配置 FPS（5-30）和 JPEG 质量（10%-100%）
 7. **会话管理** - 支持多客户端同时连接观看
 
@@ -55,6 +55,8 @@ nrdc/
 │   └── development-tasks.md                   # 本文档
 ├── src/main/java/com/nrdc/
 │   ├── NrDcApplication.java                   # 启动类
+│   ├── controller/
+│   │   └── LoginController.java               # 登录 REST 接口
 │   ├── config/
 │   │   ├── AppProperties.java                 # 配置属性绑定
 │   │   ├── WebSocketConfig.java               # WebSocket 配置
@@ -71,7 +73,8 @@ nrdc/
 │   ├── dto/
 │   │   └── InputEvent.java                    # 输入事件 DTO
 │   └── auth/
-│       └── AuthHandshakeInterceptor.java      # 握手鉴权
+│       ├── AuthHandshakeInterceptor.java      # 握手鉴权
+│       └── TokenStore.java                    # 会话 Token 管理
 ├── src/main/resources/
 │   ├── application.yml                        # 应用配置
 │   └── static/                                # 前端静态资源
@@ -91,14 +94,14 @@ nrdc/
 | `WebSocketConfig` | 注册 WebSocket 端点 `/ws`，配置握手拦截器 |
 | `WebConfig` | 配置 CORS 跨域策略 |
 
-### 5.2 WebSocket 模块 (`websocket`)
+### 5.3 WebSocket 模块 (`websocket`)
 
 | 类名 | 职责 |
 |------|------|
 | `ScreenWebSocketHandler` | 处理 WebSocket 连接/断开事件，接收文本消息并分发到 InputEventDispatcher |
 | `SessionManager` | 维护 `CopyOnWriteArraySet<WebSocketSession>` 集合，广播二进制帧数据 |
 
-### 5.3 服务模块 (`service`)
+### 5.4 服务模块 (`service`)
 
 | 类名 | 职责 |
 |------|------|
@@ -108,7 +111,7 @@ nrdc/
 | `InputEventDispatcher` | 解析 JSON 输入事件，通过 Robot 执行鼠标移动/点击/键盘按键 |
 | `PlatformService` | 检测 OS 类型、headless 模式、X11 可用性 |
 
-### 5.4 DTO 模块 (`dto`)
+### 5.5 DTO 模块 (`dto`)
 
 | 类名 | 职责 |
 |------|------|
@@ -122,22 +125,66 @@ nrdc/
 - `KEY_PRESS` - 键盘按下（keyCode）
 - `KEY_RELEASE` - 键盘释放（keyCode）
 
-### 5.5 鉴权模块 (`auth`)
+### 5.6 鉴权模块 (`auth`)
 
 | 类名 | 职责 |
 |------|------|
-| `AuthHandshakeInterceptor` | 在 WebSocket 握手阶段验证 URL 中的 `token` 参数 |
+| `AuthHandshakeInterceptor` | 在 WebSocket 握手阶段验证 URL 中的 `token` 参数（一次性会话 Token） |
+| `TokenStore` | 内存中管理一次性会话 Token 的生成与验证 |
+| `ChallengeStore` | 管理登录 Challenge-Response 机制的随机 nonce 生成与摘要验证 |
 
 ## 6. 接口定义
 
-### 6.1 WebSocket 端点
+### 6.1 REST 接口
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/challenge` | GET | 获取登录挑战 nonce（随机 64 字符十六进制字符串） |
+| `/api/login` | POST | Challenge-Response 登录，返回一次性会话 Token |
+
+**登录流程（密码不离开客户端）：**
+
+1. 客户端请求 `GET /api/challenge` 获取随机 nonce
+2. 客户端计算 `SHA-256(nonce + password)` 作为响应
+3. 客户端发送 `POST /api/login`
+
+**`GET /api/challenge` 响应：**
+```json
+{
+    "challenge": "a1b2c3d4e5f6..."
+}
+```
+
+**`POST /api/login` 请求体：**
+```json
+{
+    "username": "admin",
+    "challenge": "a1b2c3d4e5f6...",
+    "response": "sha256hexdigest..."
+}
+```
+
+**成功响应：**
+```json
+{
+    "token": "sessiontoken..."
+}
+```
+
+**失败响应 (401)：**
+```json
+{
+    "error": "用户名或密码错误"
+}
+```
+
+### 6.2 WebSocket 端点
 
 | 端点 | 协议 | 说明 |
 |------|------|------|
-| `ws://host:port/ws?token=xxx` | WebSocket | 主连接端点 |
-| `ws://host:port/ws?token=xxx` | SockJS 降级 | 浏览器不支持 WebSocket 时自动降级 |
+| `ws://host:port/ws?token=xxx` | WebSocket | 主连接端点（token 由登录接口获取） |
 
-### 6.2 消息格式
+### 6.3 消息格式
 
 **服务端 → 客户端（二进制帧）：**
 - 类型：`BinaryMessage`
@@ -283,7 +330,7 @@ java -jar nrdc-1.0.0-SNAPSHOT.jar
 ### 9.5 生产部署建议
 
 - 使用 Nginx 反向代理并配置 HTTPS
-- 修改默认 token 为强密码
+- 修改默认用户名和密码为强密码
 - 通过 `--nrdc.capture.fps` 和 `--nrdc.capture.quality` 调整性能参数
 - 配置防火墙规则限制访问端口
 

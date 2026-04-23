@@ -63,10 +63,11 @@ java -jar target/nrdc-1.0.0-SNAPSHOT.jar
 ```
 src/main/java/com/nrdc/
 ├── config/       # WebSocket、CORS 配置
+├── controller/   # REST 控制器（登录接口）
 ├── websocket/    # WebSocket 处理器与会话管理
 ├── service/      # 屏幕捕获、帧编码、输入事件分发
 ├── dto/          # 数据传输对象
-└── auth/         # Token 鉴权拦截器
+└── auth/         # Token 鉴权拦截器与 Token 管理
 ```
 
 ## 注意事项

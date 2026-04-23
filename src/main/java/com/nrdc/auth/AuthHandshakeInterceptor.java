@@ -17,10 +17,10 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
     private static final Logger log = LoggerFactory.getLogger(AuthHandshakeInterceptor.class);
     private static final String ATTR_SESSION_ID = "sessionId";
 
-    private final AppProperties appProperties;
+    private final TokenStore tokenStore;
 
-    public AuthHandshakeInterceptor(AppProperties appProperties) {
-        this.appProperties = appProperties;
+    public AuthHandshakeInterceptor(TokenStore tokenStore) {
+        this.tokenStore = tokenStore;
     }
 
     @Override
@@ -38,8 +38,8 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
             }
         }
 
-        if (token == null || !token.equals(appProperties.getAuth().getToken())) {
-            log.warn("WebSocket 握手鉴权失败，token 无效或不匹配");
+        if (!tokenStore.validateToken(token)) {
+            log.warn("WebSocket 握手鉴权失败，token 无效");
             return false;
         }
 

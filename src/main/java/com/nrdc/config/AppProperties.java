@@ -74,6 +74,8 @@ public class AppProperties {
 
     public static class Auth {
         private String token = "nrdc-default-token";
+        private String username = "admin";
+        private String password = "admin";
 
         public String getToken() {
             return token;
@@ -81,6 +83,22 @@ public class AppProperties {
 
         public void setToken(String token) {
             this.token = token;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
         }
     }
 
