@@ -76,6 +76,24 @@ body {
     box-shadow: 0 0 6px var(--danger);
 }
 
+.status-dot.connecting {
+    background: var(--warning);
+    box-shadow: 0 0 6px var(--warning);
+    animation: pulse 1s ease-in-out infinite;
+}
+
+.status-dot.reconnecting {
+    background: var(--warning);
+    box-shadow: 0 0 6px var(--warning);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-dot.disconnecting {
+    background: var(--text-secondary);
+    box-shadow: 0 0 4px var(--text-secondary);
+    animation: pulse 0.5s ease-in-out infinite;
+}
+
 .status-text {
     font-size: 12px;
     color: var(--text-secondary);
@@ -495,6 +513,11 @@ body {
 @keyframes breathe {
     0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--success); }
     50% { opacity: 0.5; box-shadow: 0 0 16px var(--success); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
 }
 
 @keyframes modalIn {

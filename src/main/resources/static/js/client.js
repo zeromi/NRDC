@@ -7,8 +7,16 @@ class NRDCClient {
     constructor() {
         this.canvas = document.getElementById('remoteDesktop');
         this.ctx = this.canvas.getContext('2d');
+
+        // 连接状态：disconnected / connecting / connected / disconnecting
+        this.state = 'disconnected';
         this.ws = null;
-        this.connected = false;
+        this.connectUrl = '';
+        this.reconnectTimer = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.manualClose = false; // 用户主动断开，不自动重连
+
         this.frameCount = 0;
         this.lastFpsTime = Date.now();
         this.displayFps = 0;
@@ -107,56 +115,123 @@ class NRDCClient {
             return;
         }
 
-        // 构建 WebSocket URL（附加 token 参数）
         const separator = url.includes('?') ? '&' : '?';
-        const wsUrl = url + separator + 'token=' + encodeURIComponent(token);
+        this.connectUrl = url + separator + 'token=' + encodeURIComponent(token);
 
-        this.showToast('正在连接...', '');
-        this.dom.connectionStatus.textContent = '连接中...';
+        this.manualClose = false;
+        this.reconnectAttempts = 0;
+        this.doConnect();
+    }
+
+    doConnect() {
+        this.setState('connecting');
 
         try {
-            this.ws = new WebSocket(wsUrl);
+            this.ws = new WebSocket(this.connectUrl);
             this.ws.binaryType = 'arraybuffer';
 
             this.ws.onopen = () => this.onConnected();
             this.ws.onclose = (e) => this.onDisconnected(e);
-            this.ws.onerror = (e) => this.onError(e);
+            this.ws.onerror = () => {};
             this.ws.onmessage = (e) => this.onMessage(e);
         } catch (err) {
             this.showToast('连接失败: ' + err.message, 'error');
-            this.updateStatus(false);
+            this.scheduleReconnect();
         }
     }
 
     disconnect() {
+        this.manualClose = true;
+        this.clearReconnectTimer();
+        this.setState('disconnecting');
+
         if (this.ws) {
-            this.ws.close();
+            try { this.ws.close(); } catch (e) {}
+            this.ws = null;
+        }
+
+        this.setState('disconnected');
+    }
+
+    scheduleReconnect() {
+        this.clearReconnectTimer();
+        this.reconnectAttempts++;
+        if (this.reconnectAttempts > this.maxReconnectAttempts) {
+            this.setState('disconnected');
+            this.showToast('重连失败，请手动重新连接', 'error');
+            return;
+        }
+        this.setState('reconnecting');
+        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
+        this.showToast(delay / 1000 + 's 后尝试第 ' + this.reconnectAttempts + ' 次重连...', '');
+        this.reconnectTimer = setTimeout(() => this.doConnect(), delay);
+    }
+
+    clearReconnectTimer() {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
         }
     }
 
     onConnected() {
-        this.connected = true;
-        this.updateStatus(true);
+        this.reconnectAttempts = 0;
+        this.clearReconnectTimer();
+        this.setState('connected');
         this.dom.canvasOverlay.classList.add('hidden');
         this.closeModal();
         this.showToast('已连接到远程桌面', 'success');
-        document.getElementById('btnConnect').disabled = true;
-        document.getElementById('btnDisconnect').disabled = false;
     }
 
     onDisconnected(e) {
-        this.connected = false;
-        this.updateStatus(false);
-        this.dom.canvasOverlay.classList.remove('hidden');
-        this.showToast('连接已断开', 'error');
-        document.getElementById('btnConnect').disabled = false;
-        document.getElementById('btnDisconnect').disabled = true;
         this.ws = null;
+
+        if (this.manualClose) {
+            this.setState('disconnected');
+            return;
+        }
+
+        this.scheduleReconnect();
     }
 
-    onError(e) {
-        console.error('WebSocket error:', e);
-        this.showToast('连接错误', 'error');
+    setState(newState) {
+        this.state = newState;
+        const btnConnect = document.getElementById('btnConnect');
+        const btnDisconnect = document.getElementById('btnDisconnect');
+
+        switch (newState) {
+            case 'disconnected':
+                this.updateStatusUI('disconnected', '未连接');
+                this.dom.canvasOverlay.classList.remove('hidden');
+                btnConnect.disabled = false;
+                btnDisconnect.disabled = true;
+                break;
+            case 'connecting':
+                this.updateStatusUI('connecting', '连接中...');
+                btnConnect.disabled = true;
+                btnDisconnect.disabled = false;
+                break;
+            case 'connected':
+                this.updateStatusUI('connected', '已连接');
+                btnConnect.disabled = true;
+                btnDisconnect.disabled = false;
+                break;
+            case 'disconnecting':
+                this.updateStatusUI('disconnecting', '断开中...');
+                btnConnect.disabled = true;
+                btnDisconnect.disabled = true;
+                break;
+            case 'reconnecting':
+                this.updateStatusUI('reconnecting', '重连中...');
+                btnConnect.disabled = true;
+                btnDisconnect.disabled = false;
+                break;
+        }
+    }
+
+    updateStatusUI(className, text) {
+        this.dom.statusIndicator.className = 'status-dot ' + className;
+        this.dom.connectionStatus.textContent = text;
     }
 
     onMessage(e) {
@@ -236,7 +311,7 @@ class NRDCClient {
     // ===== 输入事件 =====
 
     sendEvent(event) {
-        if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        if (this.state !== 'connected' || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         this.ws.send(JSON.stringify(event));
     }
 
@@ -306,7 +381,7 @@ class NRDCClient {
     }
 
     onKeyDown(e) {
-        if (!this.connected) return;
+        if (this.state !== 'connected') return;
         // 防止 F11/F2 被当输入事件发送
         if (e.key === 'F11' || e.key === 'F2') return;
 
@@ -318,7 +393,7 @@ class NRDCClient {
     }
 
     onKeyUp(e) {
-        if (!this.connected) return;
+        if (this.state !== 'connected') return;
         if (e.key === 'F11' || e.key === 'F2') return;
 
         const keyCode = this.mapKeyCode(e);
@@ -348,13 +423,13 @@ class NRDCClient {
         document.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.currentQuality = parseFloat(btn.dataset.quality);
-        if (this.connected) {
+        if (this.state === 'connected') {
             this.showToast('画质已调整: ' + Math.round(this.currentQuality * 100) + '%', 'success');
         }
     }
 
     takeScreenshot() {
-        if (!this.connected) {
+        if (this.state !== 'connected') {
             this.showToast('请先连接远程桌面', 'error');
             return;
         }
@@ -366,11 +441,6 @@ class NRDCClient {
     }
 
     // ===== UI 更新 =====
-
-    updateStatus(connected) {
-        this.dom.statusIndicator.className = 'status-dot ' + (connected ? 'connected' : 'disconnected');
-        this.dom.connectionStatus.textContent = connected ? '已连接' : '未连接';
-    }
 
     showToast(message, type) {
         const container = document.getElementById('toastContainer');
