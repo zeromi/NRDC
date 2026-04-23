@@ -3,9 +3,11 @@ server:
 
 nrdc:
   capture:
-    fps: 20
+    fps: 30
+    interval-ms: 33
     quality: 0.6
     diff-threshold: 5
+    scale-factor: 1.0
   auth:
     token: nrdc-default-token
   websocket:

@@ -13,7 +13,16 @@ class NRDCClient {
         this.lastFpsTime = Date.now();
         this.displayFps = 0;
         this.currentQuality = 0.6;
-        this.mouseMappingRatio = 1;
+
+        // 渲染优化：可复用 Image 对象 + 帧队列
+        this.renderImage = new Image();
+        this.frameQueue = [];
+        this.rendering = false;
+        this.canvasInited = false;
+
+        // 远程桌面实际分辨率（由服务端通知），用于鼠标坐标映射
+        this.screenWidth = 0;
+        this.screenHeight = 0;
 
         this.initDOM();
         this.bindEvents();
@@ -152,34 +161,64 @@ class NRDCClient {
 
     onMessage(e) {
         if (e.data instanceof ArrayBuffer) {
-            this.renderFrame(e.data);
-            this.updateFps();
+            this.frameQueue.push(e.data);
+            if (this.frameQueue.length > 2) {
+                this.frameQueue.shift();
+            }
+            this.scheduleRender();
+        } else if (typeof e.data === 'string') {
+            try {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'SCREEN_INFO') {
+                    this.screenWidth = msg.width;
+                    this.screenHeight = msg.height;
+                    this.dom.resolutionDisplay.textContent = msg.width + 'x' + msg.height;
+                }
+            } catch (err) { /* ignore non-JSON text */ }
         }
     }
 
     // ===== 渲染 =====
 
-    renderFrame(buffer) {
+    scheduleRender() {
+        if (this.rendering) return;
+        this.rendering = true;
+        requestAnimationFrame(() => this.processFrameQueue());
+    }
+
+    processFrameQueue() {
+        if (this.frameQueue.length === 0) {
+            this.rendering = false;
+            return;
+        }
+
+        // 仅取最新帧，丢弃中间帧
+        const buffer = this.frameQueue[this.frameQueue.length - 1];
+        this.frameQueue.length = 0;
+
         const blob = new Blob([buffer], { type: 'image/jpeg' });
         const url = URL.createObjectURL(blob);
-        const img = new Image();
-        img.onload = () => {
-            this.canvas.width = img.width;
-            this.canvas.height = img.height;
-            this.ctx.drawImage(img, 0, 0);
+        this.renderImage.onload = () => {
+            // 仅在分辨率变化时重设 canvas 尺寸（避免触发重排）
+            if (!this.canvasInited || this.canvas.width !== this.renderImage.width || this.canvas.height !== this.renderImage.height) {
+                this.canvas.width = this.renderImage.width;
+                this.canvas.height = this.renderImage.height;
+                this.canvasInited = true;
+            }
+
+            this.ctx.drawImage(this.renderImage, 0, 0);
             URL.revokeObjectURL(url);
 
-            // 更新鼠标坐标映射比例
-            const rect = this.canvas.getBoundingClientRect();
-            this.mouseMappingRatio = {
-                x: img.width / rect.width,
-                y: img.height / rect.height,
-            };
+            this.updateFps();
 
-            // 更新分辨率显示
-            this.dom.resolutionDisplay.textContent = img.width + 'x' + img.height;
+            // 继续处理队列中的下一帧
+            if (this.frameQueue.length > 0) {
+                requestAnimationFrame(() => this.processFrameQueue());
+            } else {
+                this.rendering = false;
+            }
         };
-        img.src = url;
+        this.renderImage.src = url;
     }
 
     updateFps() {
@@ -203,9 +242,13 @@ class NRDCClient {
 
     getCanvasCoords(e) {
         const rect = this.canvas.getBoundingClientRect();
+        // 用实际桌面分辨率做映射（screenWidth/Height 由服务端 SCREEN_INFO 消息提供）
+        // 若尚未收到则回退到 canvas 像素尺寸
+        const targetW = this.screenWidth || this.canvas.width;
+        const targetH = this.screenHeight || this.canvas.height;
         return {
-            x: Math.round((e.clientX - rect.left) * (this.mouseMappingRatio.x || 1)),
-            y: Math.round((e.clientY - rect.top) * (this.mouseMappingRatio.y || 1)),
+            x: Math.round((e.clientX - rect.left) / rect.width * targetW),
+            y: Math.round((e.clientY - rect.top) / rect.height * targetH),
         };
     }
 

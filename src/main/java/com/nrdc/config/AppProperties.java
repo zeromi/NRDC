@@ -37,6 +37,7 @@ public class AppProperties {
         private int fps = 20;
         private double quality = 0.6;
         private int diffThreshold = 5;
+        private double scaleFactor = 0.5;
 
         public int getFps() {
             return fps;
@@ -60,6 +61,14 @@ public class AppProperties {
 
         public void setDiffThreshold(int diffThreshold) {
             this.diffThreshold = diffThreshold;
+        }
+
+        public double getScaleFactor() {
+            return scaleFactor;
+        }
+
+        public void setScaleFactor(double scaleFactor) {
+            this.scaleFactor = scaleFactor;
         }
     }
 
