@@ -2,6 +2,7 @@
  * NRDC - Network Remote Desktop Control
  * 客户端核心逻辑：WebSocket 连接管理、Canvas 渲染、事件捕获
  * 支持全帧 (FULL_FRAME) 和差分帧 (DIFF_FRAME) 二进制协议
+ * 支持多人观看 + 互斥操作权控制
  */
 
 class NRDCClient {
@@ -51,6 +52,10 @@ class NRDCClient {
         this.FULL_FRAME = 0x01;
         this.DIFF_FRAME = 0x02;
 
+        // 操作权状态
+        this.isOperator = false;
+        this.operatorName = '';
+
         this.initDOM();
         this.bindEvents();
         this.updateCanvasSize();
@@ -68,6 +73,8 @@ class NRDCClient {
             connectModal: document.getElementById('connectModal'),
             canvasOverlay: document.getElementById('canvasOverlay'),
             sideToolbar: document.getElementById('sideToolbar'),
+            controlDisplay: document.getElementById('controlDisplay'),
+            btnRequestControl: document.getElementById('btnRequestControl'),
         };
     }
 
@@ -80,6 +87,7 @@ class NRDCClient {
         document.getElementById('btnFullscreen').addEventListener('click', () => this.toggleFullscreen());
         document.getElementById('btnToolbarToggle').addEventListener('click', () => this.toggleToolbar());
         document.getElementById('btnScreenshot').addEventListener('click', () => this.takeScreenshot());
+        document.getElementById('btnRequestControl').addEventListener('click', () => this.toggleControl());
 
         document.querySelectorAll('.quality-btn').forEach(btn => {
             btn.addEventListener('click', () => this.setQuality(btn));
@@ -212,6 +220,9 @@ class NRDCClient {
             this.ws = null;
         }
 
+        this.isOperator = false;
+        this.operatorName = '';
+        this.updateControlUI();
         this.setState('disconnected');
     }
 
@@ -239,6 +250,8 @@ class NRDCClient {
     onConnected() {
         this.reconnectAttempts = 0;
         this.clearReconnectTimer();
+        this.isOperator = false;
+        this.operatorName = '';
         this.setState('connected');
         this.dom.canvasOverlay.classList.add('hidden');
         this.closeModal();
@@ -304,13 +317,98 @@ class NRDCClient {
         } else if (typeof e.data === 'string') {
             try {
                 const msg = JSON.parse(e.data);
-                if (msg.type === 'SCREEN_INFO') {
-                    this.screenWidth = msg.width;
-                    this.screenHeight = msg.height;
-                    this.imageFormat = msg.imageFormat === 'png' ? 'png' : 'jpeg';
-                    this.dom.resolutionDisplay.textContent = msg.width + 'x' + msg.height;
+                switch (msg.type) {
+                    case 'SCREEN_INFO':
+                        this.screenWidth = msg.width;
+                        this.screenHeight = msg.height;
+                        this.imageFormat = msg.imageFormat === 'png' ? 'png' : 'jpeg';
+                        this.dom.resolutionDisplay.textContent = msg.width + 'x' + msg.height;
+                        break;
+                    case 'CONTROL_GRANTED':
+                        this.onControlGranted();
+                        break;
+                    case 'CONTROL_RELEASED':
+                        this.onControlReleased(msg.reason);
+                        break;
+                    case 'CONTROL_DENIED':
+                        this.onControlDenied(msg.operator);
+                        break;
+                    case 'CONTROL_CHANGED':
+                        this.onControlChanged(msg.operatorId, msg.operator);
+                        break;
                 }
             } catch (err) { /* ignore non-JSON text */ }
+        }
+    }
+
+    // ===== 操作权处理 =====
+
+    toggleControl() {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        if (this.isOperator) {
+            this.ws.send(JSON.stringify({ type: 'RELEASE_CONTROL' }));
+        } else {
+            this.ws.send(JSON.stringify({ type: 'REQUEST_CONTROL' }));
+        }
+    }
+
+    onControlGranted() {
+        this.isOperator = true;
+        this.operatorName = this.dom.username.value.trim();
+        this.updateControlUI();
+        this.canvas.style.cursor = 'default';
+        this.showToast('已获取操作权，你可以控制远程桌面', 'success');
+    }
+
+    onControlReleased(reason) {
+        this.isOperator = false;
+        this.operatorName = '';
+        this.updateControlUI();
+        this.canvas.style.cursor = 'not-allowed';
+        this.showToast(reason || '操作权已释放', '');
+    }
+
+    onControlDenied(operator) {
+        this.showToast('操作权被拒绝，' + (operator ? operator + ' 正在操作' : '有人正在操作'), 'error');
+    }
+
+    onControlChanged(operatorId, operator) {
+        if (!operator) {
+            this.operatorName = '';
+        } else {
+            this.operatorName = operator;
+        }
+        this.updateControlUI();
+
+        if (!this.isOperator) {
+            this.canvas.style.cursor = operator ? 'not-allowed' : 'default';
+        }
+    }
+
+    updateControlUI() {
+        const btn = this.dom.btnRequestControl;
+        const display = this.dom.controlDisplay;
+        if (!btn || !display) return;
+
+        if (this.isOperator) {
+            btn.textContent = '释放操作';
+            btn.classList.add('control-active');
+            btn.classList.remove('control-locked');
+            display.textContent = '操作中';
+            display.classList.add('control-active-text');
+            display.classList.remove('control-locked-text');
+        } else if (this.operatorName) {
+            btn.textContent = '请求操作';
+            btn.classList.remove('control-active');
+            btn.classList.add('control-locked');
+            display.textContent = this.operatorName + ' 操作中';
+            display.classList.remove('control-active-text');
+            display.classList.add('control-locked-text');
+        } else {
+            btn.textContent = '请求操作';
+            btn.classList.remove('control-active', 'control-locked');
+            display.textContent = '空闲';
+            display.classList.remove('control-active-text', 'control-locked-text');
         }
     }
 
@@ -494,6 +592,7 @@ class NRDCClient {
 
     sendEvent(event) {
         if (this.state !== 'connected' || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        if (!this.isOperator) return;
         this.ws.send(JSON.stringify(event));
     }
 
@@ -527,23 +626,27 @@ class NRDCClient {
     }
 
     onMouseMove(e) {
+        if (!this.isOperator) return;
         const coords = this.getCanvasCoords(e);
         this.sendEvent({ type: 'MOUSE_MOVE', x: coords.x, y: coords.y, timestamp: Date.now() });
     }
 
     onMouseDown(e) {
+        if (!this.isOperator) return;
         const coords = this.getCanvasCoords(e);
         const button = e.button + 1;
         this.sendEvent({ type: 'MOUSE_PRESS', x: coords.x, y: coords.y, button, timestamp: Date.now() });
     }
 
     onMouseUp(e) {
+        if (!this.isOperator) return;
         const coords = this.getCanvasCoords(e);
         const button = e.button + 1;
         this.sendEvent({ type: 'MOUSE_RELEASE', x: coords.x, y: coords.y, button, timestamp: Date.now() });
     }
 
     onMouseWheel(e) {
+        if (!this.isOperator) return;
         e.preventDefault();
         const delta = Math.sign(e.deltaY) * -1 * 3;
         this.sendEvent({ type: 'MOUSE_WHEEL', wheelDelta: delta, timestamp: Date.now() });
@@ -579,6 +682,7 @@ class NRDCClient {
     onKeyDown(e) {
         if (this.state !== 'connected') return;
         if (e.key === 'F11' || e.key === 'F2') return;
+        if (!this.isOperator) return;
 
         const keyCode = this.mapKeyCode(e);
         if (keyCode > 0) {
@@ -590,6 +694,7 @@ class NRDCClient {
     onKeyUp(e) {
         if (this.state !== 'connected') return;
         if (e.key === 'F11' || e.key === 'F2') return;
+        if (!this.isOperator) return;
 
         const keyCode = this.mapKeyCode(e);
         if (keyCode > 0) {

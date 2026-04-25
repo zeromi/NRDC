@@ -53,7 +53,7 @@ public class LoginController {
         }
 
         String sessionToken = UUID.randomUUID().toString().replace("-", "");
-        tokenStore.addToken(sessionToken);
+        tokenStore.addToken(sessionToken, username);
         log.info("用户登录成功: {}", username);
         return ResponseEntity.ok(Map.of("token", sessionToken));
     }
