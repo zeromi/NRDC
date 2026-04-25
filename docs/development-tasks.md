@@ -30,6 +30,7 @@
 12. **自动重连** - 客户端缓存 Token 到 sessionStorage，页面刷新后自动恢复连接
 13. **截图保存** - 从离屏 Canvas 导出 PNG 截图
 14. **会话管理** - 支持多客户端同时连接观看
+15. **移动端全面响应式支持** - 底部工具栏、虚拟键盘、触摸手势、iOS 适配、弹窗底部滑入
 
 ## 3. 技术架构
 
@@ -101,7 +102,8 @@ nrdc/
 │   └── static/                                # 前端静态资源
 │       ├── index.html                         # 主页面 (连接面板、用户管理面板)
 │       ├── css/style.css                      # Cyberpunk Neon 暗色主题
-│       └── js/client.js                       # 客户端核心逻辑 (1049 行)
+│       ├── js/client.js                       # 客户端核心逻辑 (1483 行)
+│       └── js/sha256.min.js                    # SHA-256 纯 JS 实现（HTTP 环境备用）
 ├── users.json                                 # 用户数据持久化 (运行时生成)
 └── src/test/java/com/nrdc/                     # 单元测试
 ```
@@ -405,6 +407,21 @@ nrdc:
 - [x] `docs/development-tasks.md` - 开发任务文档
 - [x] `README.md` - 项目说明文档
 - [x] `agent.md` - Agent 开发指南
+
+### 阶段十一：前端全面响应式改造（移动端支持） ✅
+
+- [x] 移动端底部工具栏 (`#mobileToolbar`) - 取代桌面侧边工具栏，包含"操作权"、"画质"、"键盘"、"截图"、"连接"5个按钮
+- [x] 虚拟键盘面板 (`#virtualKeyboard`) - Fn 行、方向键、组合键 Ctrl+C/V/Z/A/Del、Win 键，移动端专用
+- [x] 触摸手势系统：
+  - 未获操作权：单指拖动平移视图，双指捏合缩放视图
+  - 已获操作权：单击=左键、双击=连续左键、长按=右键、单指拖动=移动鼠标、双指捏合=远程滚轮
+  - 点击水波纹动画、振动反馈
+- [x] CSS 响应式断点 - ≤640px 移动端、≤375px 极小屏、横屏 landscape 压缩
+- [x] 弹窗底部滑入 - 移动端模态弹窗从底部向上弹出（sheet 风格）
+- [x] iOS 适配 - 禁用默认 viewport 缩放、font-size ≥16px 防止 iOS 自动缩放、100dvh 动态视口
+- [x] 模态弹窗 sticky header - 用户管理面板头部 position sticky，滚动时保持可见
+- [x] 画质循环切换 - 移动端底部"画质"按钮循环切换低/中/高三档
+- [x] 登录 crypto.subtle 修复 - HTTPS 环境使用原生 `crypto.subtle.digest`（无额外开销），HTTP 环境使用本地 `js/sha256.min.js` 库并弹出黄色安全警告
 
 ## 9. 构建与部署
 

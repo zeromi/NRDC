@@ -2,7 +2,11 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0A0E17">
     <title>NRDC - 远程桌面控制</title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,7 +29,7 @@
             <span id="latencyDisplay" class="metric">-- ms</span>
             <button id="btnRequestControl" class="toolbar-btn control-btn" title="请求/释放操作权">控制</button>
             <button id="btnUserMgmt" class="toolbar-btn admin-btn" title="用户管理" style="display:none">👤</button>
-            <button id="btnToggleConnect" class="toolbar-btn" title="连接设置">⚙</button>
+            <button id="btnToggleConnect" class="toolbar-btn" title="连接设置 (F2)">⚙</button>
         </div>
     </header>
 
@@ -43,17 +47,22 @@
                     </svg>
                 </div>
                 <h2 class="overlay-title">Network Remote Desktop Control</h2>
-                <p class="overlay-subtitle">点击右上角 <strong>⚙</strong> 按钮或按 <strong>F2</strong> 打开连接面板</p>
+                <p class="overlay-subtitle">
+                    点击右上角 <strong>⚙</strong> 按钮或按 <strong>F2</strong> 打开连接面板
+                </p>
+                <p class="overlay-mobile-hint">
+                    📱 点击右上角 <strong>⚙</strong> 按钮登录连接
+                </p>
             </div>
         </div>
     </main>
 
-    <!-- 侧边工具栏折叠/展开按钮 -->
+    <!-- 侧边工具栏折叠/展开按钮（桌面端） -->
     <button id="btnToolbarToggle" class="toolbar-tab" title="展开工具栏">▶</button>
 
-    <!-- 侧边工具栏 -->
+    <!-- 侧边工具栏（桌面端） -->
     <aside id="sideToolbar" class="toolbar collapsed">
-        <button id="btnFullscreen" class="tool-btn" title="全屏切换">⛶</button>
+        <button id="btnFullscreen" class="tool-btn" title="全屏切换 (F11)">⛶</button>
         <div class="tool-divider"></div>
         <button id="btnQualityHigh" class="tool-btn quality-btn" data-quality="0.85" title="高画质">Q+</button>
         <button id="btnQualityMed" class="tool-btn quality-btn active" data-quality="0.6" title="中画质">Q</button>
@@ -62,7 +71,7 @@
         <button id="btnScreenshot" class="tool-btn" title="截图保存">📷</button>
     </aside>
 
-    <!-- 底部信息栏 -->
+    <!-- 底部信息栏（桌面端） -->
     <footer id="bottomBar">
         <div class="shortcut-hints">
             <span>F11 全屏</span>
@@ -73,6 +82,85 @@
             <span id="resolutionDisplay">--</span>
         </div>
     </footer>
+
+    <!-- 移动端底部工具栏 -->
+    <nav id="mobileToolbar">
+        <button class="mobile-tool-btn" id="mBtnControl" title="操作权">
+            <span class="btn-icon">🖱️</span>
+            <span class="btn-label" id="mBtnControlLabel">请求操作</span>
+        </button>
+        <button class="mobile-tool-btn" id="mBtnQuality" title="画质切换">
+            <span class="btn-icon">🎨</span>
+            <span class="btn-label">画质</span>
+        </button>
+        <button class="mobile-tool-btn" id="mBtnKeyboard" title="虚拟键盘">
+            <span class="btn-icon">⌨️</span>
+            <span class="btn-label">键盘</span>
+        </button>
+        <button class="mobile-tool-btn" id="mBtnScreenshot" title="截图">
+            <span class="btn-icon">📷</span>
+            <span class="btn-label">截图</span>
+        </button>
+        <button class="mobile-tool-btn" id="mBtnConnect" title="连接设置">
+            <span class="btn-icon">⚙️</span>
+            <span class="btn-label" id="mBtnConnectLabel">连接</span>
+        </button>
+    </nav>
+
+    <!-- 触摸模式提示（临时显示） -->
+    <div id="touchModeBadge" class="touch-mode-badge"></div>
+
+    <!-- 虚拟键盘（移动端） -->
+    <div id="virtualKeyboard">
+        <div class="vk-close-row">
+            <span id="vkModeLabel" style="font-size:10px;color:var(--text-secondary);flex:1;padding-left:4px;font-family:var(--font-mono);">特殊键盘</span>
+            <button class="vk-close-btn" id="btnCloseVK">收起 ✕</button>
+        </div>
+        <div class="vk-row">
+            <button class="vk-key" data-key="Escape">Esc</button>
+            <button class="vk-key" data-key="F1">F1</button>
+            <button class="vk-key" data-key="F2">F2</button>
+            <button class="vk-key" data-key="F3">F3</button>
+            <button class="vk-key" data-key="F4">F4</button>
+            <button class="vk-key" data-key="F5">F5</button>
+            <button class="vk-key" data-key="F6">F6</button>
+        </div>
+        <div class="vk-row">
+            <button class="vk-key" data-key="F7">F7</button>
+            <button class="vk-key" data-key="F8">F8</button>
+            <button class="vk-key" data-key="F9">F9</button>
+            <button class="vk-key" data-key="F10">F10</button>
+            <button class="vk-key" data-key="F11">F11</button>
+            <button class="vk-key" data-key="F12">F12</button>
+            <button class="vk-key" data-key="PrintScreen">PrtSc</button>
+        </div>
+        <div class="vk-row">
+            <button class="vk-key wide" data-key="Tab">Tab</button>
+            <button class="vk-key" data-key="Home">Home</button>
+            <button class="vk-key" data-key="End">End</button>
+            <button class="vk-key" data-key="Insert">Ins</button>
+            <button class="vk-key" data-key="Delete">Del</button>
+            <button class="vk-key" data-key="PageUp">PgUp</button>
+            <button class="vk-key" data-key="PageDown">PgDn</button>
+        </div>
+        <div class="vk-row">
+            <button class="vk-key wide" data-key="ControlLeft">Ctrl</button>
+            <button class="vk-key wide" data-key="AltLeft">Alt</button>
+            <button class="vk-key wider" data-key="Space">Space</button>
+            <button class="vk-key" data-key="ArrowLeft">←</button>
+            <button class="vk-key" data-key="ArrowUp">↑</button>
+            <button class="vk-key" data-key="ArrowDown">↓</button>
+            <button class="vk-key" data-key="ArrowRight">→</button>
+        </div>
+        <div class="vk-row">
+            <button class="vk-key" data-combo="ctrl-alt-del" style="flex:2;max-width:120px;color:#FF5252;border-color:rgba(255,82,82,0.35)">Ctrl+Alt+Del</button>
+            <button class="vk-key" data-combo="ctrl-c">Ctrl+C</button>
+            <button class="vk-key" data-combo="ctrl-v">Ctrl+V</button>
+            <button class="vk-key" data-combo="ctrl-z">Ctrl+Z</button>
+            <button class="vk-key" data-combo="ctrl-a">Ctrl+A</button>
+            <button class="vk-key" data-combo="win">Win</button>
+        </div>
+    </div>
 
     <!-- 连接配置面板（模态弹窗） -->
     <div id="connectModal" class="modal">
@@ -85,11 +173,12 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label for="username">用户名</label>
-                    <input type="text" id="username" placeholder="请输入用户名" autocomplete="username">
+                    <input type="text" id="username" placeholder="请输入用户名" autocomplete="username"
+                           autocorrect="off" autocapitalize="off" spellcheck="false">
                 </div>
                 <div class="form-group">
                     <label for="password">密码</label>
-                    <input type="password" id="password" placeholder="请输入密码" autocomplete="current-password">
+                    <input type="password" id="password" placeholder="请输入密码" autocomplete="off" autocorrect="off" autocapitalize="off">
                 </div>
             </div>
             <div class="modal-footer">
@@ -137,7 +226,8 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label for="newUsername">用户名</label>
-                    <input type="text" id="newUsername" placeholder="请输入用户名" autocomplete="off">
+                    <input type="text" id="newUsername" placeholder="请输入用户名" autocomplete="off"
+                           autocorrect="off" autocapitalize="off" spellcheck="false">
                 </div>
                 <div class="form-group">
                     <label for="newPassword">密码</label>
@@ -161,6 +251,7 @@
     <!-- Toast 通知 -->
     <div id="toastContainer" class="toast-container"></div>
 
+    <script src="/js/sha256.min.js"></script>
     <script src="/js/client.js"></script>
 </body>
 </html>
