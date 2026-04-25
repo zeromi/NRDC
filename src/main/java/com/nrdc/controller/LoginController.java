@@ -67,4 +67,16 @@ public class LoginController {
                 "username", user.getUsername()
         ));
     }
+
+    @GetMapping("/api/token/verify")
+    public ResponseEntity<?> verifyToken(@RequestHeader("X-Auth-Token") String token) {
+        TokenStore.TokenInfo info = tokenStore.validateToken(token);
+        if (info == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "token 无效或已过期"));
+        }
+        return ResponseEntity.ok(Map.of(
+                "username", info.username(),
+                "role", info.role()
+        ));
+    }
 }

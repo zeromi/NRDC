@@ -64,6 +64,9 @@ class NRDCClient {
         this.initDOM();
         this.bindEvents();
         this.updateCanvasSize();
+
+        // 页面刷新后自动重连（用缓存的 Token，无需重新输入密码）
+        this.autoReconnectWithToken();
     }
 
     initDOM() {
@@ -189,16 +192,14 @@ class NRDCClient {
             }
             const challenge = chData.challenge;
 
-            // 2. 计算 SHA-256(challenge + SHA-256(password)) 作为响应，密码不离开浏览器
+            // 2. 计算 SHA-256(challenge + SHA-256(password)) 作为响应
             const encoder = new TextEncoder();
             const pwHashBuf = await crypto.subtle.digest('SHA-256', encoder.encode(password));
-            const pwHashArr = Array.from(new Uint8Array(pwHashBuf));
-            const pwHash = pwHashArr.map(b => b.toString(16).padStart(2, '0')).join('');
+            const pwHash = Array.from(new Uint8Array(pwHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
             const data = encoder.encode(challenge + pwHash);
             const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const response = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            const response = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
             // 3. 发送用户名 + challenge + response 进行登录
             const resp = await fetch('/api/login', {
@@ -212,15 +213,54 @@ class NRDCClient {
                 this.setState('disconnected');
                 return;
             }
-            this.connectUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://')
-                + location.host + '/ws?token=' + encodeURIComponent(loginData.token);
-            this.currentUser = loginData.username || username;
-            this.role = loginData.role || 'user';
-            this.doConnect();
+
+            // 4. 缓存 Token 用于自动重连（sessionStorage: 刷新保留，关闭标签页自动清除）
+            sessionStorage.setItem('nrdc_token', loginData.token);
+            sessionStorage.setItem('nrdc_username', loginData.username || username);
+            sessionStorage.setItem('nrdc_role', loginData.role || 'user');
+
+            this.onTokenReady(loginData.token, loginData.username || username, loginData.role || 'user');
         } catch (err) {
             this.showToast('登录请求失败: ' + err.message, 'error');
             this.setState('disconnected');
         }
+    }
+
+    /**
+     * 页面刷新后用缓存的 Token 自动重连
+     */
+    async autoReconnectWithToken() {
+        const token = sessionStorage.getItem('nrdc_token');
+        if (!token) return;
+
+        try {
+            const resp = await fetch('/api/token/verify', {
+                headers: { 'X-Auth-Token': token }
+            });
+            if (!resp.ok) {
+                // Token 已失效，清除缓存
+                sessionStorage.removeItem('nrdc_token');
+                sessionStorage.removeItem('nrdc_username');
+                sessionStorage.removeItem('nrdc_role');
+                return;
+            }
+            const data = await resp.json();
+            this.dom.username.value = data.username;
+            this.onTokenReady(token, data.username, data.role);
+        } catch (err) {
+            // 网络错误，不清除 Token，等网络恢复后用户手动重连
+        }
+    }
+
+    /**
+     * Token 就绪后建立 WebSocket 连接
+     */
+    onTokenReady(token, username, role) {
+        this.currentUser = username;
+        this.role = role;
+        this.connectUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://')
+            + location.host + '/ws?token=' + encodeURIComponent(token);
+        this.doConnect();
     }
 
     doConnect() {
@@ -262,12 +302,26 @@ class NRDCClient {
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
             this.setState('disconnected');
             this.showToast('重连失败，请手动重新连接', 'error');
+            // 清除失效的 Token
+            sessionStorage.removeItem('nrdc_token');
             return;
         }
         this.setState('reconnecting');
         const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
         this.showToast(delay / 1000 + 's 后尝试第 ' + this.reconnectAttempts + ' 次重连...', '');
-        this.reconnectTimer = setTimeout(() => this.doConnect(), delay);
+
+        // 用缓存的 Token 直接重连 WebSocket
+        const savedToken = sessionStorage.getItem('nrdc_token');
+        if (savedToken) {
+            this.reconnectTimer = setTimeout(() => this.onTokenReady(
+                savedToken,
+                sessionStorage.getItem('nrdc_username') || this.currentUser,
+                sessionStorage.getItem('nrdc_role') || this.role
+            ), delay);
+        } else {
+            this.setState('disconnected');
+            this.showToast('登录已过期，请重新登录', 'error');
+        }
     }
 
     clearReconnectTimer() {
@@ -750,7 +804,10 @@ class NRDCClient {
         const toolbar = this.dom.sideToolbar;
         toolbar.classList.toggle('collapsed');
         const btn = document.getElementById('btnToolbarToggle');
-        btn.textContent = toolbar.classList.contains('collapsed') ? '▶' : '◀';
+        const isCollapsed = toolbar.classList.contains('collapsed');
+        btn.textContent = isCollapsed ? '▶' : '◀';
+        btn.title = isCollapsed ? '展开工具栏' : '折叠工具栏';
+        btn.classList.toggle('active', !isCollapsed);
     }
 
     setQuality(btn) {

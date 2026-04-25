@@ -241,6 +241,18 @@ body {
     pointer-events: all;
 }
 
+:fullscreen .toolbar-tab {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+:fullscreen .toolbar-tab:hover,
+:fullscreen :has(#sideToolbar:not(.collapsed)) .toolbar-tab {
+    opacity: 1;
+    pointer-events: all;
+}
+
 /* 未连接覆盖层 */
 #canvasOverlay {
     position: absolute;
@@ -286,10 +298,45 @@ body {
 }
 
 /* ===== 侧边工具栏 ===== */
-#sideToolbar {
+.toolbar-tab {
     position: fixed;
     top: 50%;
     left: 0;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 48px;
+    border: 1px solid var(--border-glow);
+    border-left: none;
+    border-radius: 0 8px 8px 0;
+    background: var(--bg-glass);
+    backdrop-filter: blur(16px);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 91;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 0 4px;
+}
+
+.toolbar-tab:hover {
+    background: rgba(0, 229, 255, 0.1);
+    color: var(--primary);
+    border-color: var(--primary-dark);
+    box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
+}
+
+.toolbar-tab.active {
+    color: var(--primary);
+    border-color: var(--primary-dark);
+}
+
+#sideToolbar {
+    position: fixed;
+    top: 50%;
+    left: 24px;
     transform: translateY(-50%);
     display: flex;
     flex-direction: column;
@@ -302,11 +349,19 @@ body {
     border-left: none;
     border-radius: 0 10px 10px 0;
     z-index: 90;
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
 }
 
 #sideToolbar.collapsed {
-    transform: translateY(-50%) translateX(-42px);
+    transform: translateY(-50%) translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+#sideToolbar.collapsed:hover {
+    transform: translateY(-50%) translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
 }
 
 .tool-btn {
