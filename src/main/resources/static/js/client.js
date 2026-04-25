@@ -95,6 +95,9 @@ class NRDCClient {
         // 虚拟键盘
         this.vkOpen = false;
 
+        // 浮动工具栏（全屏用）
+        this.isFullscreen = false;
+
         // 画质档位轮换
         this.qualityLevels = [0.3, 0.6, 0.85];
         this.qualityIndex = 1;
@@ -148,6 +151,9 @@ class NRDCClient {
             touchModeBadge:     document.getElementById('touchModeBadge'),
             virtualKeyboard:    document.getElementById('virtualKeyboard'),
             btnCloseVK:         document.getElementById('btnCloseVK'),
+            floatingToolbar:    document.getElementById('floatingToolbar'),
+            fBtnKeyboard:       document.getElementById('fBtnKeyboard'),
+            fBtnExitFullscreen: document.getElementById('fBtnExitFullscreen'),
             // 弹窗视图切换
             loginForm:          document.getElementById('loginForm'),
             loggedInPanel:      document.getElementById('loggedInPanel'),
@@ -208,8 +214,25 @@ class NRDCClient {
 
         // 尺寸变化
         window.addEventListener('resize', () => this.updateCanvasSize());
-        document.addEventListener('fullscreenchange', () => this.updateCanvasSize());
-        document.addEventListener('webkitfullscreenchange', () => this.updateCanvasSize());
+        document.addEventListener('fullscreenchange', () => this.onFullscreenChange());
+        document.addEventListener('webkitfullscreenchange', () => this.onFullscreenChange());
+    }
+
+    onFullscreenChange() {
+        this.isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        this.updateCanvasSize();
+        this._updateFloatingToolbar();
+    }
+
+    _updateFloatingToolbar() {
+        const ft = this.dom.floatingToolbar;
+        if (!ft) return;
+        // 仅在移动端全屏时显示浮动工具栏
+        if (this.isMobile && this.isFullscreen) {
+            ft.classList.add('show');
+        } else {
+            ft.classList.remove('show');
+        }
     }
 
     bindMobileEvents() {
@@ -234,6 +257,14 @@ class NRDCClient {
         }
         if (this.dom.btnCloseVK) {
             this.dom.btnCloseVK.addEventListener('click', () => this.closeVirtualKeyboard());
+        }
+
+        // 浮动工具栏按钮（全屏模式用）
+        if (this.dom.fBtnKeyboard) {
+            this.dom.fBtnKeyboard.addEventListener('click', () => this.toggleVirtualKeyboard());
+        }
+        if (this.dom.fBtnExitFullscreen) {
+            this.dom.fBtnExitFullscreen.addEventListener('click', () => this.toggleFullscreen());
         }
 
         // 虚拟键盘按键
@@ -809,8 +840,8 @@ class NRDCClient {
         let px = (clientX - rect.left) / cssW * pixelW;
         let py = (clientY - rect.top) / cssH * pixelH;
 
-        // 逆变换移动端视图变换
-        if (this.isMobile && this.view.scale !== 1.0) {
+        // 逆变换移动端视图变换（平移和缩放都需要逆变换）
+        if (this.isMobile && (this.view.scale !== 1.0 || this.view.x !== 0 || this.view.y !== 0)) {
             px = (px - this.view.x) / this.view.scale;
             py = (py - this.view.y) / this.view.scale;
         }
@@ -1226,6 +1257,9 @@ class NRDCClient {
         if (this.dom.mBtnKeyboard) {
             this.dom.mBtnKeyboard.style.color = 'var(--primary)';
         }
+        if (this.dom.fBtnKeyboard) {
+            this.dom.fBtnKeyboard.classList.add('vk-active');
+        }
     }
 
     closeVirtualKeyboard() {
@@ -1234,6 +1268,9 @@ class NRDCClient {
         this.vkOpen = false;
         if (this.dom.mBtnKeyboard) {
             this.dom.mBtnKeyboard.style.color = '';
+        }
+        if (this.dom.fBtnKeyboard) {
+            this.dom.fBtnKeyboard.classList.remove('vk-active');
         }
     }
 

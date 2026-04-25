@@ -1064,6 +1064,63 @@ body {
     animation: badgeFadeOut 2.5s ease forwards;
 }
 
+/* ===== 移动端全屏浮动工具栏 ===== */
+.floating-toolbar {
+    display: none;
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 120;
+    flex-direction: column;
+    gap: 8px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.floating-toolbar.show {
+    display: flex;
+    opacity: 0.35;
+    pointer-events: all;
+}
+
+.floating-toolbar.show:active,
+.floating-toolbar.show:hover {
+    opacity: 1;
+}
+
+.floating-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--border-glow);
+    background: rgba(10, 14, 23, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: var(--text-secondary);
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.floating-btn:active {
+    transform: scale(0.9);
+    background: rgba(0, 229, 255, 0.15);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.floating-btn.vk-active {
+    color: var(--primary);
+    border-color: var(--primary-dark);
+    background: rgba(0, 229, 255, 0.1);
+}
+
 @keyframes badgeFadeOut {
     0%, 60% { opacity: 1; }
     100% { opacity: 0; }
@@ -1338,6 +1395,26 @@ body {
     :fullscreen .toast-container,
     ::-webkit-full-screen .toast-container {
         bottom: 10px;
+    }
+
+    /* 全屏时虚拟键盘贴底 */
+    :fullscreen #virtualKeyboard.show,
+    ::-webkit-full-screen #virtualKeyboard.show {
+        bottom: 0;
+    }
+
+    /* 全屏时浮动工具栏显示（由 JS 控制） */
+    :fullscreen .floating-toolbar.show,
+    ::-webkit-full-screen .floating-toolbar.show {
+        display: flex;
+        opacity: 0.35;
+        pointer-events: all;
+    }
+
+    :fullscreen .floating-toolbar.show,
+    ::-webkit-full-screen .floating-toolbar.show {
+        bottom: 12px;
+        right: 12px;
     }
 }
 
