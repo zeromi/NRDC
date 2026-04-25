@@ -19,10 +19,12 @@
             <span class="brand">NRDC</span>
         </div>
         <div class="status-right">
+            <span id="userDisplay" class="metric user-display" style="display:none"></span>
             <span id="controlDisplay" class="control-status">空闲</span>
             <span id="fpsDisplay" class="metric">0 FPS</span>
             <span id="latencyDisplay" class="metric">-- ms</span>
             <button id="btnRequestControl" class="toolbar-btn control-btn" title="请求/释放操作权">控制</button>
+            <button id="btnUserMgmt" class="toolbar-btn admin-btn" title="用户管理" style="display:none">👤</button>
             <button id="btnToggleConnect" class="toolbar-btn" title="连接设置">⚙</button>
         </div>
     </header>
@@ -91,6 +93,65 @@
             <div class="modal-footer">
                 <button id="btnConnect" class="btn btn-primary">连接</button>
                 <button id="btnDisconnect" class="btn btn-danger" disabled>断开</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 用户管理面板（仅管理员可见） -->
+    <div id="userMgmtModal" class="modal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content glass-panel user-mgmt-panel">
+            <div class="modal-header">
+                <h3>用户管理</h3>
+                <button id="btnCloseUserMgmt" class="modal-close">✕</button>
+            </div>
+            <div class="modal-body user-mgmt-body">
+                <div class="user-mgmt-actions">
+                    <button id="btnAddUser" class="btn btn-primary btn-sm">+ 新增用户</button>
+                </div>
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>用户名</th>
+                            <th>角色</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增/编辑用户弹窗 -->
+    <div id="userFormModal" class="modal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h3 id="userFormTitle">新增用户</h3>
+                <button id="btnCloseUserForm" class="modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="newUsername">用户名</label>
+                    <input type="text" id="newUsername" placeholder="请输入用户名" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="newPassword">密码</label>
+                    <input type="password" id="newPassword" placeholder="请输入密码" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="newRole">角色</label>
+                    <select id="newRole">
+                        <option value="user">普通用户</option>
+                        <option value="admin">管理员</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btnSaveUser" class="btn btn-primary">保存</button>
+                <button id="btnCancelUser" class="btn btn-danger">取消</button>
             </div>
         </div>
     </div>

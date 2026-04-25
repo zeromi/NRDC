@@ -160,6 +160,16 @@ public class SessionManager {
         return session != null ? getUsername(session) : "unknown";
     }
 
+    public String getRoleBySessionId(String sessionId) {
+        WebSocketSession session = findSessionByAttrId(sessionId);
+        return session != null ? getRole(session) : "user";
+    }
+
+    public String getRole(WebSocketSession session) {
+        Object attr = session.getAttributes().get("role");
+        return attr != null ? attr.toString() : "user";
+    }
+
     private WebSocketSession findSessionByAttrId(String sessionId) {
         for (WebSocketSession session : sessions) {
             if (sessionId.equals(getSessionId(session))) {

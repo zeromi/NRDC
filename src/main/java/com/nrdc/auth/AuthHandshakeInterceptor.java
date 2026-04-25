@@ -16,6 +16,7 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
     private static final Logger log = LoggerFactory.getLogger(AuthHandshakeInterceptor.class);
     static final String ATTR_SESSION_ID = "sessionId";
     static final String ATTR_USERNAME = "username";
+    static final String ATTR_ROLE = "role";
 
     private final TokenStore tokenStore;
 
@@ -38,16 +39,17 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
             }
         }
 
-        String username = tokenStore.validateToken(token);
-        if (username == null) {
+        TokenStore.TokenInfo tokenInfo = tokenStore.validateToken(token);
+        if (tokenInfo == null) {
             log.warn("WebSocket 握手鉴权失败，token 无效");
             return false;
         }
 
         String sessionId = java.util.UUID.randomUUID().toString().substring(0, 8);
         attributes.put(ATTR_SESSION_ID, sessionId);
-        attributes.put(ATTR_USERNAME, username);
-        log.info("WebSocket 握手成功，sessionId={}, username={}", sessionId, username);
+        attributes.put(ATTR_USERNAME, tokenInfo.username());
+        attributes.put(ATTR_ROLE, tokenInfo.role());
+        log.info("WebSocket 握手成功，sessionId={}, username={}, role={}", sessionId, tokenInfo.username(), tokenInfo.role());
         return true;
     }
 

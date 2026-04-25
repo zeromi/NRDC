@@ -56,6 +56,11 @@ class NRDCClient {
         this.isOperator = false;
         this.operatorName = '';
 
+        // 用户信息
+        this.role = 'user';
+        this.sessionId = '';
+        this.currentUser = '';
+
         this.initDOM();
         this.bindEvents();
         this.updateCanvasSize();
@@ -75,6 +80,15 @@ class NRDCClient {
             sideToolbar: document.getElementById('sideToolbar'),
             controlDisplay: document.getElementById('controlDisplay'),
             btnRequestControl: document.getElementById('btnRequestControl'),
+            btnUserMgmt: document.getElementById('btnUserMgmt'),
+            userMgmtModal: document.getElementById('userMgmtModal'),
+            userFormModal: document.getElementById('userFormModal'),
+            userTableBody: document.getElementById('userTableBody'),
+            userFormTitle: document.getElementById('userFormTitle'),
+            newUsername: document.getElementById('newUsername'),
+            newPassword: document.getElementById('newPassword'),
+            newRole: document.getElementById('newRole'),
+            userDisplay: document.getElementById('userDisplay'),
         };
     }
 
@@ -92,6 +106,16 @@ class NRDCClient {
         document.querySelectorAll('.quality-btn').forEach(btn => {
             btn.addEventListener('click', () => this.setQuality(btn));
         });
+
+        // 用户管理按钮
+        document.getElementById('btnUserMgmt').addEventListener('click', () => this.openUserMgmt());
+        document.getElementById('btnCloseUserMgmt').addEventListener('click', () => this.closeUserMgmt());
+        document.getElementById('btnAddUser').addEventListener('click', () => this.openUserForm());
+        document.getElementById('btnCloseUserForm').addEventListener('click', () => this.closeUserForm());
+        document.getElementById('btnCancelUser').addEventListener('click', () => this.closeUserForm());
+        document.getElementById('btnSaveUser').addEventListener('click', () => this.saveUser());
+        this.dom.userMgmtModal.querySelector('.modal-backdrop').addEventListener('click', () => this.closeUserMgmt());
+        this.dom.userFormModal.querySelector('.modal-backdrop').addEventListener('click', () => this.closeUserForm());
 
         // Canvas 鼠标事件
         this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
@@ -165,9 +189,13 @@ class NRDCClient {
             }
             const challenge = chData.challenge;
 
-            // 2. 计算 SHA-256(challenge + password) 作为响应，密码不离开浏览器
+            // 2. 计算 SHA-256(challenge + SHA-256(password)) 作为响应，密码不离开浏览器
             const encoder = new TextEncoder();
-            const data = encoder.encode(challenge + password);
+            const pwHashBuf = await crypto.subtle.digest('SHA-256', encoder.encode(password));
+            const pwHashArr = Array.from(new Uint8Array(pwHashBuf));
+            const pwHash = pwHashArr.map(b => b.toString(16).padStart(2, '0')).join('');
+
+            const data = encoder.encode(challenge + pwHash);
             const hashBuffer = await crypto.subtle.digest('SHA-256', data);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             const response = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -186,6 +214,8 @@ class NRDCClient {
             }
             this.connectUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://')
                 + location.host + '/ws?token=' + encodeURIComponent(loginData.token);
+            this.currentUser = loginData.username || username;
+            this.role = loginData.role || 'user';
             this.doConnect();
         } catch (err) {
             this.showToast('登录请求失败: ' + err.message, 'error');
@@ -280,6 +310,7 @@ class NRDCClient {
                 this.dom.canvasOverlay.classList.remove('hidden');
                 btnConnect.disabled = false;
                 btnDisconnect.disabled = true;
+                this.updateUserRoleUI();
                 break;
             case 'connecting':
                 this.updateStatusUI('connecting', '连接中...');
@@ -290,6 +321,7 @@ class NRDCClient {
                 this.updateStatusUI('connected', '已连接');
                 btnConnect.disabled = true;
                 btnDisconnect.disabled = false;
+                this.updateUserRoleUI();
                 break;
             case 'disconnecting':
                 this.updateStatusUI('disconnecting', '断开中...');
@@ -323,6 +355,8 @@ class NRDCClient {
                         this.screenHeight = msg.height;
                         this.imageFormat = msg.imageFormat === 'png' ? 'png' : 'jpeg';
                         this.dom.resolutionDisplay.textContent = msg.width + 'x' + msg.height;
+                        this.sessionId = msg.sessionId || '';
+                        this.updateUserRoleUI();
                         break;
                     case 'CONTROL_GRANTED':
                         this.onControlGranted();
@@ -749,6 +783,194 @@ class NRDCClient {
     }
 
     // ===== UI 更新 =====
+
+    updateUserRoleUI() {
+        const btn = this.dom.btnUserMgmt;
+        const display = this.dom.userDisplay;
+        if (!btn || !display) return;
+
+        if (this.state === 'connected' || this.state === 'reconnecting') {
+            display.style.display = '';
+            display.textContent = this.currentUser + (this.role === 'admin' ? ' [Admin]' : '');
+            if (this.role === 'admin') {
+                btn.style.display = '';
+            } else {
+                btn.style.display = 'none';
+            }
+        } else {
+            btn.style.display = 'none';
+            display.style.display = 'none';
+        }
+    }
+
+    // ===== 用户管理 =====
+
+    openUserMgmt() {
+        this.dom.userMgmtModal.classList.add('open');
+        this.loadUsers();
+    }
+
+    closeUserMgmt() {
+        this.dom.userMgmtModal.classList.remove('open');
+    }
+
+    async loadUsers() {
+        try {
+            const resp = await fetch('/api/users', {
+                headers: { 'X-Session-Id': this.sessionId }
+            });
+            const users = await resp.json();
+            if (!resp.ok) {
+                this.showToast(users.error || '获取用户列表失败', 'error');
+                return;
+            }
+            this.renderUserTable(users);
+        } catch (err) {
+            this.showToast('获取用户列表失败: ' + err.message, 'error');
+        }
+    }
+
+    renderUserTable(users) {
+        const tbody = this.dom.userTableBody;
+        tbody.innerHTML = '';
+        users.forEach(u => {
+            const tr = document.createElement('tr');
+            const dateStr = u.createdAt ? new Date(u.createdAt).toLocaleString('zh-CN') : '-';
+            const roleLabel = u.role === 'admin' ? '<span class="role-badge role-admin">管理员</span>' : '<span class="role-badge role-user">普通用户</span>';
+            const isSelf = u.username === this.currentUser;
+
+            let actions = '';
+            if (!isSelf) {
+                actions += `<button class="table-btn" onclick="nrdc.editUserRole('${u.username}', '${u.role}')">切换角色</button>`;
+                actions += `<button class="table-btn btn-danger-text" onclick="nrdc.resetUserPassword('${u.username}')">重置密码</button>`;
+                if (u.role !== 'admin') {
+                    actions += `<button class="table-btn btn-danger-text" onclick="nrdc.deleteUser('${u.username}')">删除</button>`;
+                }
+            } else {
+                actions = '<span class="text-muted">当前用户</span>';
+            }
+
+            tr.innerHTML = `
+                <td>${u.username}</td>
+                <td>${roleLabel}</td>
+                <td class="text-muted">${dateStr}</td>
+                <td class="table-actions">${actions}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    openUserForm() {
+        this.dom.userFormTitle.textContent = '新增用户';
+        this.dom.newUsername.value = '';
+        this.dom.newUsername.disabled = false;
+        this.dom.newPassword.value = '';
+        this.dom.newPassword.style.display = '';
+        this.dom.newPassword.previousElementSibling.style.display = '';
+        this.dom.newRole.value = 'user';
+        this.dom.userFormModal.dataset.editMode = '';
+        this.dom.userFormModal.classList.add('open');
+    }
+
+    closeUserForm() {
+        this.dom.userFormModal.classList.remove('open');
+        // 恢复被隐藏的字段
+        this.dom.newPassword.style.display = '';
+        this.dom.newPassword.previousElementSibling.style.display = '';
+        this.dom.newRole.style.display = '';
+        this.dom.newRole.previousElementSibling.style.display = '';
+        this.dom.newUsername.disabled = false;
+    }
+
+    async saveUser() {
+        const username = this.dom.newUsername.value.trim();
+        const password = this.dom.newPassword.value;
+        const role = this.dom.newRole.value;
+
+        if (!username) { this.showToast('请输入用户名', 'error'); return; }
+        if (!password && !this.dom.userFormModal.dataset.editMode) {
+            this.showToast('请输入密码', 'error'); return;
+        }
+
+        try {
+            let resp;
+            if (this.dom.userFormModal.dataset.editMode === 'password') {
+                resp = await fetch(`/api/users/${encodeURIComponent(username)}/password`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'X-Session-Id': this.sessionId },
+                    body: JSON.stringify({ password })
+                });
+            } else if (this.dom.userFormModal.dataset.editMode === 'role') {
+                resp = await fetch(`/api/users/${encodeURIComponent(username)}/role`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'X-Session-Id': this.sessionId },
+                    body: JSON.stringify({ role })
+                });
+            } else {
+                resp = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Session-Id': this.sessionId },
+                    body: JSON.stringify({ username, password, role })
+                });
+            }
+
+            const data = await resp.json();
+            if (!resp.ok) {
+                this.showToast(data.error || '操作失败', 'error');
+                return;
+            }
+            this.showToast(data.message || '操作成功', 'success');
+            this.closeUserForm();
+            this.loadUsers();
+        } catch (err) {
+            this.showToast('操作失败: ' + err.message, 'error');
+        }
+    }
+
+    editUserRole(username, currentRole) {
+        this.dom.userFormTitle.textContent = '修改角色 - ' + username;
+        this.dom.newUsername.value = username;
+        this.dom.newUsername.disabled = true;
+        this.dom.newPassword.style.display = 'none';
+        this.dom.newPassword.previousElementSibling.style.display = 'none';
+        this.dom.newRole.value = currentRole === 'admin' ? 'user' : 'admin';
+        this.dom.userFormModal.dataset.editMode = 'role';
+        this.dom.userFormModal.classList.add('open');
+    }
+
+    resetUserPassword(username) {
+        this.dom.userFormTitle.textContent = '重置密码 - ' + username;
+        this.dom.newUsername.value = username;
+        this.dom.newUsername.disabled = true;
+        this.dom.newPassword.style.display = '';
+        this.dom.newPassword.previousElementSibling.style.display = '';
+        this.dom.newPassword.value = '';
+        this.dom.newRole.style.display = 'none';
+        this.dom.newRole.previousElementSibling.style.display = 'none';
+        this.dom.userFormModal.dataset.editMode = 'password';
+        this.dom.userFormModal.classList.add('open');
+        // 保存恢复显示的引用
+        this._formRoleHidden = true;
+    }
+
+    async deleteUser(username) {
+        if (!confirm(`确定要删除用户 "${username}" 吗？`)) return;
+        try {
+            const resp = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+                method: 'DELETE',
+                headers: { 'X-Session-Id': this.sessionId }
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                this.showToast(data.error || '删除失败', 'error');
+                return;
+            }
+            this.showToast(data.message, 'success');
+            this.loadUsers();
+        } catch (err) {
+            this.showToast('删除失败: ' + err.message, 'error');
+        }
+    }
 
     showToast(message, type) {
         const container = document.getElementById('toastContainer');

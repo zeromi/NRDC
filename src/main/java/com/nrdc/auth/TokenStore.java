@@ -8,19 +8,20 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class TokenStore {
 
-    private final Map<String, String> tokenUserMap = new ConcurrentHashMap<>();
+    private final Map<String, TokenInfo> tokenMap = new ConcurrentHashMap<>();
 
-    public void addToken(String token, String username) {
-        tokenUserMap.put(token, username);
+    public void addToken(String token, String username, String role) {
+        tokenMap.put(token, new TokenInfo(username, role));
     }
 
     /**
-     * 验证并消费 token（一次性），返回关联的用户名
-     * @return 用户名，验证失败返回 null
+     * 验证并消费 token（一次性），返回关联的 TokenInfo
+     * @return TokenInfo，验证失败返回 null
      */
-    public String validateToken(String token) {
+    public TokenInfo validateToken(String token) {
         if (token == null) return null;
-        String username = tokenUserMap.remove(token);
-        return username;
+        return tokenMap.remove(token);
     }
+
+    public record TokenInfo(String username, String role) {}
 }

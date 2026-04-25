@@ -50,6 +50,8 @@ public class ScreenWebSocketHandler extends TextWebSocketHandler {
         info.put("width", captureService.getScreenWidth());
         info.put("height", captureService.getScreenHeight());
         info.put("imageFormat", encoderService.getImageFormat());
+        info.put("sessionId", sessionId);
+        info.put("role", sessionManager.getRole(session));
         session.sendMessage(new TextMessage(objectMapper.writeValueAsString(info)));
 
         // 通知当前操作权状态
