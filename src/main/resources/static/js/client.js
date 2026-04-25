@@ -55,6 +55,7 @@ class NRDCClient {
         this.role = 'user';
         this.sessionId = '';
         this.currentUser = '';
+        this.isLoggedIn = false;
 
         // ===== 触摸交互状态 =====
         this.isMobile = this._detectMobile();
@@ -143,9 +144,17 @@ class NRDCClient {
             mBtnQuality:        document.getElementById('mBtnQuality'),
             mBtnKeyboard:       document.getElementById('mBtnKeyboard'),
             mBtnScreenshot:     document.getElementById('mBtnScreenshot'),
+            mBtnFullscreen:     document.getElementById('mBtnFullscreen'),
             touchModeBadge:     document.getElementById('touchModeBadge'),
             virtualKeyboard:    document.getElementById('virtualKeyboard'),
             btnCloseVK:         document.getElementById('btnCloseVK'),
+            // 弹窗视图切换
+            loginForm:          document.getElementById('loginForm'),
+            loggedInPanel:      document.getElementById('loggedInPanel'),
+            loggedInUser:       document.getElementById('loggedInUser'),
+            loggedInRole:       document.getElementById('loggedInRole'),
+            modalTitle:         document.getElementById('modalTitle'),
+            btnLogout:          document.getElementById('btnLogout'),
         };
     }
 
@@ -157,6 +166,7 @@ class NRDCClient {
         document.getElementById('btnCloseModal').addEventListener('click', () => this.closeModal());
         document.getElementById('btnConnect').addEventListener('click', () => this.connect());
         document.getElementById('btnDisconnect').addEventListener('click', () => this.disconnect());
+        this.dom.btnLogout.addEventListener('click', () => this.logout());
 
         // 桌面端工具栏
         document.getElementById('btnFullscreen').addEventListener('click', () => this.toggleFullscreen());
@@ -199,6 +209,7 @@ class NRDCClient {
         // 尺寸变化
         window.addEventListener('resize', () => this.updateCanvasSize());
         document.addEventListener('fullscreenchange', () => this.updateCanvasSize());
+        document.addEventListener('webkitfullscreenchange', () => this.updateCanvasSize());
     }
 
     bindMobileEvents() {
@@ -217,6 +228,9 @@ class NRDCClient {
         }
         if (this.dom.mBtnScreenshot) {
             this.dom.mBtnScreenshot.addEventListener('click', () => this.takeScreenshot());
+        }
+        if (this.dom.mBtnFullscreen) {
+            this.dom.mBtnFullscreen.addEventListener('click', () => this.toggleFullscreen());
         }
         if (this.dom.btnCloseVK) {
             this.dom.btnCloseVK.addEventListener('click', () => this.closeVirtualKeyboard());
@@ -246,12 +260,15 @@ class NRDCClient {
     // ===== 连接管理 =====
 
     toggleModal() {
+        this.updateModalUI();
         this.dom.connectModal.classList.toggle('open');
         // 移动端弹窗打开时，等输入框 focus 后再处理
         if (this.dom.connectModal.classList.contains('open')) {
             setTimeout(() => {
-                const userInput = this.dom.username;
-                if (userInput && !userInput.value) userInput.focus();
+                if (!this.isLoggedIn) {
+                    const userInput = this.dom.username;
+                    if (userInput && !userInput.value) userInput.focus();
+                }
             }, 300);
         }
     }
@@ -310,9 +327,9 @@ class NRDCClient {
                 return;
             }
 
-            sessionStorage.setItem('nrdc_token', loginData.token);
-            sessionStorage.setItem('nrdc_username', loginData.username || username);
-            sessionStorage.setItem('nrdc_role', loginData.role || 'user');
+                        localStorage.setItem('nrdc_token', loginData.token);
+            localStorage.setItem('nrdc_username', loginData.username || username);
+            localStorage.setItem('nrdc_role', loginData.role || 'user');
 
             this.onTokenReady(loginData.token, loginData.username || username, loginData.role || 'user');
         } catch (err) {
@@ -322,7 +339,7 @@ class NRDCClient {
     }
 
     async autoReconnectWithToken() {
-        const token = sessionStorage.getItem('nrdc_token');
+        const token = localStorage.getItem('nrdc_token');
         if (!token) return;
 
         try {
@@ -330,9 +347,9 @@ class NRDCClient {
                 headers: { 'X-Auth-Token': token }
             });
             if (!resp.ok) {
-                sessionStorage.removeItem('nrdc_token');
-                sessionStorage.removeItem('nrdc_username');
-                sessionStorage.removeItem('nrdc_role');
+                localStorage.removeItem('nrdc_token');
+                localStorage.removeItem('nrdc_username');
+                localStorage.removeItem('nrdc_role');
                 return;
             }
             const data = await resp.json();
@@ -344,9 +361,11 @@ class NRDCClient {
     onTokenReady(token, username, role) {
         this.currentUser = username;
         this.role = role;
+        this.isLoggedIn = true;
         this.connectUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://')
             + location.host + '/ws?token=' + encodeURIComponent(token);
         this.doConnect();
+        this.updateModalUI();
     }
 
     doConnect() {
@@ -384,19 +403,19 @@ class NRDCClient {
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
             this.setState('disconnected');
             this.showToast('重连失败，请手动重新连接', 'error');
-            sessionStorage.removeItem('nrdc_token');
+            localStorage.removeItem('nrdc_token');
             return;
         }
         this.setState('reconnecting');
         const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
         this.showToast(delay / 1000 + 's 后尝试第 ' + this.reconnectAttempts + ' 次重连...', '');
 
-        const savedToken = sessionStorage.getItem('nrdc_token');
+        const savedToken = localStorage.getItem('nrdc_token');
         if (savedToken) {
             this.reconnectTimer = setTimeout(() => this.onTokenReady(
                 savedToken,
-                sessionStorage.getItem('nrdc_username') || this.currentUser,
-                sessionStorage.getItem('nrdc_role') || this.role
+                localStorage.getItem('nrdc_username') || this.currentUser,
+                localStorage.getItem('nrdc_role') || this.role
             ), delay);
         } else {
             this.setState('disconnected');
@@ -469,6 +488,7 @@ class NRDCClient {
                 break;
         }
         this._updateMobileConnectBtn();
+        this.updateModalUI();
     }
 
     updateStatusUI(className, text) {
@@ -734,8 +754,7 @@ class NRDCClient {
             this.ctx.save();
             this.ctx.translate(this.view.x, this.view.y);
             this.ctx.scale(this.view.scale, this.view.scale);
-            this.ctx.drawImage(this.offscreenCanvas, dx / this.view.scale, dy / this.view.scale,
-                dw / this.view.scale, dh / this.view.scale);
+            this.ctx.drawImage(this.offscreenCanvas, dx, dy, dw, dh);
             this.ctx.restore();
         } else {
             this.ctx.drawImage(this.offscreenCanvas, dx, dy, dw, dh);
@@ -1221,10 +1240,17 @@ class NRDCClient {
     // ===== 工具栏操作 =====
 
     toggleFullscreen() {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(() => {});
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            const el = document.documentElement;
+            const requestFn = el.requestFullscreen || el.webkitRequestFullscreen;
+            if (requestFn) {
+                requestFn.call(el).catch(() => {});
+            } else {
+                this.showToast('当前浏览器不支持全屏', 'error');
+            }
         } else {
-            document.exitFullscreen().catch(() => {});
+            const exitFn = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exitFn) exitFn.call(document).catch(() => {});
         }
     }
 
@@ -1278,6 +1304,78 @@ class NRDCClient {
         link.href = tmpCanvas.toDataURL('image/png');
         link.click();
         this.showToast('截图已保存', 'success');
+    }
+
+    // ===== 登录状态 & 弹窗视图 =====
+
+    /** 注销登录：断开连接、清除凭证、回到登录表单 */
+    logout() {
+        this.manualClose = true;
+        this.clearReconnectTimer();
+        if (this.ws) {
+            try { this.ws.close(); } catch (e) {}
+            this.ws = null;
+        }
+        this.isLoggedIn = false;
+        this.isOperator = false;
+        this.operatorName = '';
+        this.currentUser = '';
+        this.role = 'user';
+        this.sessionId = '';
+
+        localStorage.removeItem('nrdc_token');
+        localStorage.removeItem('nrdc_username');
+        localStorage.removeItem('nrdc_role');
+
+        this.updateControlUI();
+        this.updateModalUI();
+        this.setState('disconnected');
+        this.updateUserRoleUI();
+        this.closeModal();
+        this.showToast('已注销', '');
+    }
+
+    /** 根据登录+连接状态切换弹窗内容 */
+    updateModalUI() {
+        const loginForm = this.dom.loginForm;
+        const loggedInPanel = this.dom.loggedInPanel;
+        const btnConnect = document.getElementById('btnConnect');
+        const btnDisconnect = document.getElementById('btnDisconnect');
+        const btnLogout = this.dom.btnLogout;
+        const loggedInUser = this.dom.loggedInUser;
+        const loggedInRole = this.dom.loggedInRole;
+        const modalTitle = this.dom.modalTitle;
+
+        if (this.isLoggedIn) {
+            // 已登录：隐藏表单，显示用户信息面板
+            loginForm.style.display = 'none';
+            loggedInPanel.style.display = '';
+            btnLogout.style.display = '';
+
+            loggedInUser.textContent = this.currentUser;
+            loggedInRole.textContent = this.role === 'admin' ? '管理员' : '普通用户';
+            loggedInRole.className = 'role-badge ' + (this.role === 'admin' ? 'role-admin' : 'role-user');
+
+            if (this.state === 'connected' || this.state === 'connecting' || this.state === 'reconnecting') {
+                // 已连接：显示断开 + 注销
+                modalTitle.textContent = '远程桌面';
+                btnConnect.style.display = 'none';
+                btnDisconnect.style.display = '';
+            } else {
+                // 已登录但未连接：显示连接 + 注销
+                modalTitle.textContent = '远程桌面';
+                btnConnect.style.display = '';
+                btnDisconnect.style.display = 'none';
+            }
+        } else {
+            // 未登录：显示登录表单
+            modalTitle.textContent = '连接设置';
+            loginForm.style.display = '';
+            loggedInPanel.style.display = 'none';
+            btnLogout.style.display = 'none';
+            btnConnect.style.display = '';
+            btnDisconnect.style.display = '';
+        }
     }
 
     // ===== UI 更新 =====

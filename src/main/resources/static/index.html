@@ -97,6 +97,10 @@
             <span class="btn-icon">⌨️</span>
             <span class="btn-label">键盘</span>
         </button>
+        <button class="mobile-tool-btn" id="mBtnFullscreen" title="全屏">
+            <span class="btn-icon">⛶</span>
+            <span class="btn-label">全屏</span>
+        </button>
         <button class="mobile-tool-btn" id="mBtnScreenshot" title="截图">
             <span class="btn-icon">📷</span>
             <span class="btn-label">截图</span>
@@ -167,10 +171,11 @@
         <div class="modal-backdrop"></div>
         <div class="modal-content glass-panel">
             <div class="modal-header">
-                <h3>连接设置</h3>
+                <h3 id="modalTitle">连接设置</h3>
                 <button id="btnCloseModal" class="modal-close">✕</button>
             </div>
-            <div class="modal-body">
+            <!-- 未登录：登录表单 -->
+            <div id="loginForm" class="modal-body">
                 <div class="form-group">
                     <label for="username">用户名</label>
                     <input type="text" id="username" placeholder="请输入用户名" autocomplete="username"
@@ -181,9 +186,18 @@
                     <input type="password" id="password" placeholder="请输入密码" autocomplete="off" autocorrect="off" autocapitalize="off">
                 </div>
             </div>
+            <!-- 已登录：状态面板 -->
+            <div id="loggedInPanel" class="modal-body" style="display:none">
+                <div class="logged-in-info">
+                    <span class="logged-in-label">当前用户</span>
+                    <span id="loggedInUser" class="logged-in-name">--</span>
+                    <span id="loggedInRole" class="role-badge role-user">普通用户</span>
+                </div>
+            </div>
             <div class="modal-footer">
                 <button id="btnConnect" class="btn btn-primary">连接</button>
                 <button id="btnDisconnect" class="btn btn-danger" disabled>断开</button>
+                <button id="btnLogout" class="btn btn-ghost" style="display:none">注销</button>
             </div>
         </div>
     </div>

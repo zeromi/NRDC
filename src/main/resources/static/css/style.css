@@ -320,19 +320,28 @@ body {
 
 /* ===== 全屏模式 ===== */
 :fullscreen #statusBar,
-:fullscreen #bottomBar {
+:fullscreen #bottomBar,
+:fullscreen #mobileToolbar,
+::-webkit-full-screen #statusBar,
+::-webkit-full-screen #bottomBar,
+::-webkit-full-screen #mobileToolbar {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
 }
 
 :fullscreen #statusBar:hover,
-:fullscreen #bottomBar:hover {
+:fullscreen #bottomBar:hover,
+:fullscreen #mobileToolbar:hover,
+::-webkit-full-screen #statusBar:hover,
+::-webkit-full-screen #bottomBar:hover,
+::-webkit-full-screen #mobileToolbar:hover {
     opacity: 1;
     pointer-events: all;
 }
 
-:fullscreen #canvasContainer {
+:fullscreen #canvasContainer,
+::-webkit-full-screen #canvasContainer {
     top: 0;
     bottom: 0;
 }
@@ -776,6 +785,37 @@ body {
     background: rgba(255, 82, 82, 0.15);
     color: var(--danger);
     border: 1px solid rgba(255, 82, 82, 0.3);
+}
+
+.btn-ghost {
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--text-secondary);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.btn-ghost:hover:not(:disabled) {
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--text-primary);
+    border-color: rgba(148, 163, 184, 0.35);
+}
+
+/* 已登录信息面板 */
+.logged-in-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 0;
+}
+
+.logged-in-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.logged-in-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--primary);
 }
 
 .btn-danger:hover:not(:disabled) {
@@ -1255,6 +1295,49 @@ body {
     /* 虚拟键盘调整底部 */
     #virtualKeyboard.show {
         bottom: var(--mobile-toolbar-h);
+    }
+
+    /* 移动端全屏模式：隐藏顶栏和底栏 */
+    :fullscreen #statusBar,
+    ::-webkit-full-screen #statusBar {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+
+    :fullscreen #statusBar:hover,
+    ::-webkit-full-screen #statusBar:hover {
+        opacity: 1;
+        pointer-events: all;
+    }
+
+    :fullscreen #mobileToolbar,
+    ::-webkit-full-screen #mobileToolbar {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+
+    :fullscreen #mobileToolbar:hover,
+    ::-webkit-full-screen #mobileToolbar:hover {
+        opacity: 1;
+        pointer-events: all;
+    }
+
+    :fullscreen #canvasContainer,
+    ::-webkit-full-screen #canvasContainer {
+        top: 0;
+        bottom: 0;
+    }
+
+    :fullscreen .touch-mode-badge,
+    ::-webkit-full-screen .touch-mode-badge {
+        bottom: 8px;
+    }
+
+    :fullscreen .toast-container,
+    ::-webkit-full-screen .toast-container {
+        bottom: 10px;
     }
 }
 
