@@ -1190,8 +1190,24 @@ body {
 
 .vk-close-row {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
     margin-bottom: 2px;
+}
+
+.vk-mode-btn {
+    background: rgba(0, 229, 255, 0.1);
+    border: 1px solid rgba(0, 229, 255, 0.3);
+    color: var(--primary);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 14px;
+    cursor: pointer;
+    min-height: 30px;
+    line-height: 1;
+}
+
+.vk-mode-btn:active {
+    background: rgba(0, 229, 255, 0.25);
 }
 
 .vk-close-btn {
@@ -1204,6 +1220,50 @@ body {
     font-family: var(--font-mono);
     cursor: pointer;
     min-height: 30px;
+}
+
+.vk-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.vk-typing-row {
+    gap: 3px;
+}
+
+.vk-typing-row .vk-key {
+    height: 38px;
+    font-size: 13px;
+    max-width: 34px;
+    flex: 1;
+}
+
+.vk-typing-row .vk-key.wide {
+    max-width: 48px;
+    flex: 1.3;
+}
+
+.vk-typing-row .vk-key.wider {
+    max-width: 64px;
+    flex: 1.7;
+}
+
+.vk-key-fn {
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.vk-key-fn:active,
+.vk-key-fn.active {
+    color: var(--primary);
+    background: rgba(0, 229, 255, 0.15);
+    border-color: var(--primary);
+}
+
+.vk-space {
+    flex: 4;
+    max-width: none;
 }
 
 /* ===== 响应式断点 ===== */
