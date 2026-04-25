@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-NRDC（Network Remote Desktop Control）是基于 Spring Boot 4.0.5 的浏览器远程桌面控制工具，通过 WebSocket 实现实时屏幕共享与远程键鼠控制。
+NRDC（Network Remote Desktop Control）是基于 Spring Boot 4.0.5 的浏览器远程桌面控制工具，通过 WebSocket 实现实时屏幕共享与远程键鼠控制。支持多用户角色管理、互斥操作权控制、块级差分编码、自动重连等功能。
 
 ## 必须遵守的环境配置
 
@@ -62,16 +62,28 @@ java -jar target/nrdc-1.0.0-SNAPSHOT.jar
 
 ```
 src/main/java/com/nrdc/
-├── config/       # WebSocket、CORS 配置
-├── controller/   # REST 控制器（登录接口）
-├── websocket/    # WebSocket 处理器与会话管理
+├── config/       # WebSocket、CORS、属性配置绑定
+├── controller/   # REST 控制器（登录接口、用户管理接口）
+├── websocket/    # WebSocket 处理器、会话管理、操作权控制
 ├── service/      # 屏幕捕获、帧编码、输入事件分发
 ├── dto/          # 数据传输对象
-└── auth/         # Token 鉴权拦截器与 Token 管理
+└── auth/         # Token 鉴权、Challenge-Response、用户管理（JSON 持久化）
 ```
+
+## 核心功能
+
+- 实时屏幕捕获与推送（AWT Robot + JPEG/PNG 编码）
+- 远程键鼠操控（WebSocket JSON 指令 + Robot 模拟）
+- 用户名密码鉴权（Challenge-Response，SHA-256 摘要传输）
+- 多用户角色管理（admin/user，`users.json` 持久化）
+- 互斥操作权控制（多人观看，仅一人可操作）
+- 块级差分编码（全帧/差分帧二进制协议，带宽节省 50-95%）
+- 自动重连（sessionStorage Token 缓存）
+- 跨平台（Windows 高 DPI 感知、Linux X11/Xvfb）
 
 ## 注意事项
 
 - 仅使用 Java 25 稳定特性，未启用预览特性
 - 远程桌面功能依赖本地图形环境（Windows 原生 / Linux 需 X11 或 Xvfb）
-- 鉴权 Token 默认为 `nrdc-default-token`，可在 `application.yml` 中修改
+- 用户数据存储在工作目录 `users.json`，首次启动自动创建 `admin/admin`
+- 会话 Token 有效期 24 小时，缓存在客户端 sessionStorage
