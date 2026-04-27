@@ -95,7 +95,10 @@ class NRDCClient {
         // 虚拟键盘
         this.vkOpen = false;
         this.vkMode = 'special'; // 'special' | 'typing'
-        this.vkShifted = false;
+
+        // 本机键盘输入
+        this.nativeInput = document.getElementById('nativeKeyboardInput');
+        this.nativeInputActive = false;
 
         // 浮动工具栏（全屏用）
         this.isFullscreen = false;
@@ -154,11 +157,10 @@ class NRDCClient {
             virtualKeyboard:    document.getElementById('virtualKeyboard'),
             btnCloseVK:         document.getElementById('btnCloseVK'),
             btnSwitchVK:        document.getElementById('btnSwitchVK'),
+            btnClipboardSync:   document.getElementById('btnClipboardSync'),
             vkModeLabel:        document.getElementById('vkModeLabel'),
             vkSpecial:          document.getElementById('vkSpecial'),
             vkTyping:           document.getElementById('vkTyping'),
-            vkShift:            document.getElementById('vkShift'),
-            vkShift2:           document.getElementById('vkShift2'),
             floatingToolbar:    document.getElementById('floatingToolbar'),
             fBtnKeyboard:       document.getElementById('fBtnKeyboard'),
             fBtnExitFullscreen: document.getElementById('fBtnExitFullscreen'),
@@ -169,6 +171,9 @@ class NRDCClient {
             loggedInRole:       document.getElementById('loggedInRole'),
             modalTitle:         document.getElementById('modalTitle'),
             btnLogout:          document.getElementById('btnLogout'),
+            // 本机键盘
+            nativeFeedback:     document.getElementById('vkNativeFeedback'),
+            btnNativeSend:      document.getElementById('btnNativeSend'),
         };
     }
 
@@ -278,15 +283,10 @@ class NRDCClient {
         // 虚拟键盘按键
         if (this.dom.virtualKeyboard) {
             this.dom.virtualKeyboard.addEventListener('click', (e) => {
-                const btn = e.target.closest('[data-key],[data-combo],[data-char],[data-modifier]');
+                const btn = e.target.closest('[data-key],[data-combo]');
                 if (!btn) return;
                 if (btn.dataset.combo) {
                     this.sendCombo(btn.dataset.combo);
-                } else if (btn.dataset.char) {
-                    this.sendCharKey(btn.dataset.char);
-                } else if (btn.dataset.modifier) {
-                    this.toggleShift();
-                    return;
                 } else if (btn.dataset.key) {
                     this.sendVirtualKey(btn.dataset.key);
                 }
@@ -297,6 +297,10 @@ class NRDCClient {
             if (this.dom.btnSwitchVK) {
                 this.dom.btnSwitchVK.addEventListener('click', () => this.switchVKMode());
             }
+            // 剪贴板同步
+            if (this.dom.btnClipboardSync) {
+                this.dom.btnClipboardSync.addEventListener('click', () => this.syncClipboardToDevice());
+            }
         }
 
         // Canvas 触摸事件
@@ -304,6 +308,206 @@ class NRDCClient {
         this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
         this.canvas.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
         this.canvas.addEventListener('touchcancel', (e) => this.onTouchCancel(e), { passive: false });
+
+        // 本机键盘输入事件
+        this._bindNativeKeyboard();
+    }
+
+    // ===== 本机键盘（移动端） =====
+
+    _bindNativeKeyboard() {
+        if (!this.nativeInput) return;
+        // Enter 键发送
+        this.nativeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this._sendNativeText();
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+            }
+        });
+        // 发送按钮
+        if (this.dom.btnNativeSend) {
+            this.dom.btnNativeSend.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._sendNativeText();
+            });
+        }
+        // 输入框复制/剪切时自动同步剪贴板
+        this.nativeInput.addEventListener('copy', () => setTimeout(() => this._autoSyncClipboard(), 150));
+        this.nativeInput.addEventListener('cut', () => setTimeout(() => this._autoSyncClipboard(), 150));
+    }
+
+    /** 激活本机键盘：聚焦可见 input 以唤起系统键盘 */
+    _activateNativeKeyboard() {
+        if (!this.isOperator) { this.showToast('请先获取操作权', 'error'); return; }
+        if (!this.nativeInput) return;
+        this.nativeInput.value = '';
+        this.nativeInputActive = true;
+        setTimeout(() => {
+            this.nativeInput.focus();
+        }, 100);
+        if (navigator.vibrate) navigator.vibrate(20);
+    }
+
+    /** 停用本机键盘：清空并失焦 input */
+    _deactivateNativeKeyboard() {
+        if (!this.nativeInput) return;
+        this.nativeInputActive = false;
+        this.nativeInput.value = '';
+        this.nativeInput.blur();
+    }
+
+    /** 发送输入框中的全部文本到远程桌面 */
+    _sendNativeText() {
+        if (!this.isOperator) { this.showToast('请先获取操作权', 'error'); return; }
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        if (!this.nativeInput) return;
+
+        const text = this.nativeInput.value;
+        if (!text) return;
+
+        // 通过 TEXT_INPUT 事件发送整段文本（后端使用剪贴板+Ctrl+V粘贴）
+        this.ws.send(JSON.stringify({
+            type: 'TEXT_INPUT',
+            text: text,
+            timestamp: Date.now()
+        }));
+
+        // 清空输入框，保持焦点
+        this.nativeInput.value = '';
+        this.nativeInput.focus();
+
+        // 振动反馈
+        if (navigator.vibrate) navigator.vibrate(30);
+        this._showTouchBadge('已发送');
+    }
+
+    // ===== 剪贴板同步（移动端 → 远程桌面） =====
+
+    /** 手动触发：同步设备剪贴板到远程桌面 */
+    syncClipboardToDevice() {
+        if (!this.isOperator) { this.showToast('请先获取操作权', 'error'); return; }
+        this._doClipboardSync();
+    }
+
+    /** 输入框复制/剪切后自动同步（静默模式） */
+    async _autoSyncClipboard() {
+        if (!this.isOperator || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        try { await this._doClipboardSync(true); } catch (e) { /* 静默 */ }
+    }
+
+    /**
+     * 读取设备剪贴板并发送到远程桌面。
+     * @param {boolean} silent - 静默模式，不弹出提示
+     */
+    async _doClipboardSync(silent) {
+        if (!navigator.clipboard) {
+            if (!silent) this.showToast('当前浏览器不支持剪贴板同步', 'error');
+            return;
+        }
+
+        try {
+            let text = null;
+            let files = [];
+
+            // 优先使用 clipboard.read() 获取文本+文件
+            if (navigator.clipboard.read) {
+                try {
+                    const items = await navigator.clipboard.read();
+                    for (const item of items) {
+                        // 文本内容
+                        if (item.types.includes('text/plain')) {
+                            const blob = await item.getType('text/plain');
+                            const t = await blob.text();
+                            if (t) text = text ? text + '\n' + t : t;
+                        }
+                        // 文件内容（图片等）
+                        for (const type of item.types) {
+                            if (type.startsWith('image/') || type.startsWith('application/')) {
+                                try {
+                                    const blob = await item.getType(type);
+                                    if (blob && blob.size > 0) {
+                                        const ab = await blob.arrayBuffer();
+                                        const fileName = (item.name || 'clipboard') + this._mimeToExt(type);
+                                        files.push({
+                                            name: fileName,
+                                            mimeType: type,
+                                            data: this._ab2b64(ab),
+                                            size: blob.size,
+                                        });
+                                    }
+                                } catch (_) { /* 跳过不可读类型 */ }
+                            }
+                        }
+                    }
+                } catch (_) { /* read() 失败，回退到 readText */ }
+            }
+
+            // 回退：仅文本
+            if (text === null && files.length === 0 && navigator.clipboard.readText) {
+                text = await navigator.clipboard.readText();
+                if (!text) return;
+            }
+
+            if (text === null && files.length === 0) {
+                if (!silent) this.showToast('剪贴板为空', '');
+                return;
+            }
+
+            // 计算总大小
+            let totalSize = 0;
+            if (text) totalSize += new Blob([text]).size;
+            files.forEach(f => totalSize += f.size);
+
+            if (totalSize > 20 * 1024 * 1024) {
+                this.showToast('剪贴板内容超过20MB，无法同步', 'error');
+                return;
+            }
+
+            // 发送 CLIPBOARD_SYNC 消息
+            const msg = { type: 'CLIPBOARD_SYNC', timestamp: Date.now() };
+            if (text) msg.text = text;
+            if (files.length > 0) msg.files = files;
+
+            this.ws.send(JSON.stringify(msg));
+            if (!silent) {
+                this._showTouchBadge('📋 剪贴板已同步');
+                if (navigator.vibrate) navigator.vibrate(30);
+            }
+        } catch (e) {
+            if (e.name !== 'NotAllowedError' && !silent) {
+                this.showToast('剪贴板读取失败', 'error');
+            }
+        }
+    }
+
+    /** ArrayBuffer → Base64（分块避免栈溢出） */
+    _ab2b64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        const chunkSize = 8192;
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
+        }
+        return btoa(binary);
+    }
+
+    /** MIME 类型 → 文件扩展名 */
+    _mimeToExt(mimeType) {
+        const map = {
+            'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif',
+            'image/webp': '.webp', 'image/bmp': '.bmp', 'application/pdf': '.pdf',
+        };
+        return map[mimeType] || '.bin';
+    }
+
+    /** 处理服务端剪贴板同步通知 */
+    _onClipboardNotification(msg) {
+        const prefix = msg.isLarge ? '⚠️ ' : '📋 ';
+        const type = msg.isLarge ? 'warning' : 'success';
+        this.showToast(prefix + (msg.message || '剪贴板已同步'), type);
     }
 
     // ===== 连接管理 =====
@@ -586,6 +790,9 @@ class NRDCClient {
                         break;
                     case 'CONTROL_CHANGED':
                         this.onControlChanged(msg.operatorId, msg.operator);
+                        break;
+                    case 'CLIPBOARD_NOTIFICATION':
+                        this._onClipboardNotification(msg);
                         break;
                 }
             } catch (err) { /* ignore non-JSON */ }
@@ -1294,83 +1501,28 @@ class NRDCClient {
         if (this.dom.fBtnKeyboard) {
             this.dom.fBtnKeyboard.classList.remove('vk-active');
         }
+        // 停用本机键盘
+        this._deactivateNativeKeyboard();
     }
 
-    /** 切换虚拟键盘模式：特殊键盘 / 标准打字键盘 */
+    /** 切换虚拟键盘模式：特殊键盘 / 本机键盘 */
     switchVKMode() {
         this.vkMode = this.vkMode === 'special' ? 'typing' : 'special';
         if (this.vkMode === 'typing') {
             this.dom.vkSpecial.style.display = 'none';
             this.dom.vkTyping.style.display = 'flex';
-            this.dom.vkModeLabel.textContent = '标准键盘';
+            this.dom.vkModeLabel.textContent = '本机键盘';
             this.dom.btnSwitchVK.textContent = '🔧';
+            // 激活本机键盘
+            this._activateNativeKeyboard();
         } else {
             this.dom.vkTyping.style.display = 'none';
             this.dom.vkSpecial.style.display = 'flex';
             this.dom.vkModeLabel.textContent = '特殊键盘';
             this.dom.btnSwitchVK.textContent = '🔤';
-            this.vkShifted = false;
-            this._updateShiftUI();
+            // 停用本机键盘
+            this._deactivateNativeKeyboard();
         }
-    }
-
-    /** 切换 Shift 状态 */
-    toggleShift() {
-        this.vkShifted = !this.vkShifted;
-        this._updateShiftUI();
-    }
-
-    _updateShiftUI() {
-        const cls = 'active';
-        if (this.dom.vkShift) this.dom.vkShift.classList.toggle(cls, this.vkShifted);
-        if (this.dom.vkShift2) this.dom.vkShift2.classList.toggle(cls, this.vkShifted);
-    }
-
-    /** 发送打字字符键 */
-    sendCharKey(char) {
-        if (!this.isOperator) { this.showToast('请先获取操作权', 'error'); return; }
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-        let charToSend = char;
-
-        // Shift 映射
-        if (this.vkShifted) {
-            const shiftMap = {
-                '`': '~', '1': '!', '2': '@', '3': '#', '4': '$', '5': '%',
-                '6': '^', '7': '&', '8': '*', '9': '(', '0': ')', '-': '_', '=': '+',
-                '[': '{', ']': '}', '\\': '|', ';': ':', "'": '"', ',': '<', '.': '>', '/': '?',
-            };
-            const lower = char.toLowerCase();
-            if (shiftMap[char]) {
-                charToSend = shiftMap[char];
-            } else if (lower >= 'a' && lower <= 'z') {
-                charToSend = char.toUpperCase();
-            } else {
-                charToSend = char;
-            }
-        }
-
-        const keyCode = charToSend.toUpperCase().charCodeAt(0);
-
-        // 如果 Shift 激活，先按下 Shift
-        if (this.vkShifted) {
-            this.ws.send(JSON.stringify({ type: 'KEY_PRESS', keyCode: 16, timestamp: Date.now() }));
-        }
-
-        this.ws.send(JSON.stringify({ type: 'KEY_PRESS', keyCode, timestamp: Date.now() }));
-        setTimeout(() => {
-            this.ws && this.ws.send(JSON.stringify({ type: 'KEY_RELEASE', keyCode, timestamp: Date.now() }));
-            // 如果 Shift 激活，发送完松开 Shift
-            if (this.vkShifted) {
-                setTimeout(() => {
-                    this.ws && this.ws.send(JSON.stringify({ type: 'KEY_RELEASE', keyCode: 16, timestamp: Date.now() }));
-                }, 30);
-                this.vkShifted = false;
-                this._updateShiftUI();
-            }
-        }, 80);
-
-        if (navigator.vibrate) navigator.vibrate(20);
     }
 
     // ===== 工具栏操作 =====

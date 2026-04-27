@@ -7,6 +7,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.awt.*;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
 import java.awt.event.KeyEvent;
 
 @Service
@@ -39,6 +43,7 @@ public class InputEventDispatcher {
             case MOUSE_WHEEL -> handleMouseWheel(event);
             case KEY_PRESS -> handleKeyPress(event);
             case KEY_RELEASE -> handleKeyRelease(event);
+            case TEXT_INPUT -> handleTextInput(event);
             default -> log.warn("未知事件类型: {}", event.getType());
         }
     }
@@ -67,6 +72,48 @@ public class InputEventDispatcher {
 
     private void handleKeyRelease(InputEvent event) {
         robot.keyRelease(event.getKeyCode());
+    }
+
+    /**
+     * 处理文本输入（非ASCII字符，如中文、日文等）。
+     * 通过剪贴板 + Ctrl+V 模拟粘贴来实现。
+     */
+    private void handleTextInput(InputEvent event) {
+        String text = event.getText();
+        if (text == null || text.isEmpty()) return;
+
+        try {
+            Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+
+            // 保存当前剪贴板内容
+            Transferable oldContents = null;
+            try {
+                oldContents = clipboard.getContents(null);
+            } catch (Exception ignored) {}
+
+            // 设置新内容到剪贴板
+            clipboard.setContents(new StringSelection(text), null);
+
+            // 模拟 Ctrl+V 粘贴
+            robot.keyPress(KeyEvent.VK_CONTROL);
+            robot.delay(30);
+            robot.keyPress(KeyEvent.VK_V);
+            robot.delay(30);
+            robot.keyRelease(KeyEvent.VK_V);
+            robot.delay(30);
+            robot.keyRelease(KeyEvent.VK_CONTROL);
+
+            // 恢复剪贴板内容
+            if (oldContents != null) {
+                try {
+                    clipboard.setContents(oldContents, null);
+                } catch (Exception ignored) {}
+            }
+
+            log.debug("文本输入已发送: {}", text.length() > 10 ? text.substring(0, 10) + "..." : text);
+        } catch (Exception e) {
+            log.error("文本输入失败: {}", e.getMessage());
+        }
     }
 
     private int mapMouseButton(int button) {

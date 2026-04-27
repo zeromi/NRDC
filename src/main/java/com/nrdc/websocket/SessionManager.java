@@ -12,6 +12,8 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Component
 public class SessionManager {
@@ -21,6 +23,8 @@ public class SessionManager {
 
     private final CopyOnWriteArraySet<WebSocketSession> sessions = new CopyOnWriteArraySet<>();
     private final Map<String, WebSocketSession> sessionMap = new ConcurrentHashMap<>();
+    /** 每个 session 的写锁，防止并发发送导致状态冲突 */
+    private final Map<String, Lock> sessionLocks = new ConcurrentHashMap<>();
 
     /** 当前拥有操作权的 session ID，null 表示无人操作 */
     private volatile String operatorSessionId = null;
@@ -32,6 +36,7 @@ public class SessionManager {
     public void addSession(WebSocketSession session) {
         sessions.add(session);
         sessionMap.put(session.getId(), session);
+        sessionLocks.put(session.getId(), new ReentrantLock());
         log.info("客户端连接，sessionId={}, username={}, 当前连接数: {}",
                 getSessionId(session), getUsername(session), sessions.size());
     }
@@ -39,6 +44,7 @@ public class SessionManager {
     public void removeSession(WebSocketSession session) {
         sessions.remove(session);
         sessionMap.remove(session.getId());
+        sessionLocks.remove(session.getId());
 
         String sessionId = getSessionId(session);
         log.info("客户端断开，sessionId={}, username={}, 当前连接数: {}",
@@ -55,11 +61,16 @@ public class SessionManager {
     public void broadcastScreenFrame(byte[] frameData) {
         for (WebSocketSession session : sessions) {
             if (session.isOpen()) {
-                try {
-                    session.sendMessage(new BinaryMessage(frameData));
-                } catch (IOException e) {
-                    log.error("向客户端发送帧数据失败: {}", e.getMessage());
-                    removeSession(session);
+                Lock lock = sessionLocks.get(session.getId());
+                if (lock != null && lock.tryLock()) {
+                    try {
+                        session.sendMessage(new BinaryMessage(frameData));
+                    } catch (IOException e) {
+                        log.error("向客户端发送帧数据失败: {}", e.getMessage());
+                        removeSession(session);
+                    } finally {
+                        lock.unlock();
+                    }
                 }
             }
         }
@@ -117,10 +128,16 @@ public class SessionManager {
     public void sendToSession(String sessionId, Object message) {
         WebSocketSession session = findSessionByAttrId(sessionId);
         if (session != null && session.isOpen()) {
-            try {
-                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(message)));
-            } catch (IOException e) {
-                log.error("向 sessionId={} 发送消息失败: {}", sessionId, e.getMessage());
+            Lock lock = sessionLocks.get(session.getId());
+            if (lock != null) {
+                lock.lock();
+                try {
+                    session.sendMessage(new TextMessage(objectMapper.writeValueAsString(message)));
+                } catch (IOException e) {
+                    log.error("向 sessionId={} 发送消息失败: {}", sessionId, e.getMessage());
+                } finally {
+                    lock.unlock();
+                }
             }
         }
     }
@@ -130,11 +147,16 @@ public class SessionManager {
             String json = objectMapper.writeValueAsString(message);
             for (WebSocketSession session : sessions) {
                 if (session.isOpen()) {
-                    try {
-                        session.sendMessage(new TextMessage(json));
-                    } catch (IOException e) {
-                        log.error("广播消息失败: {}", e.getMessage());
-                        removeSession(session);
+                    Lock lock = sessionLocks.get(session.getId());
+                    if (lock != null && lock.tryLock()) {
+                        try {
+                            session.sendMessage(new TextMessage(json));
+                        } catch (IOException e) {
+                            log.error("广播消息失败: {}", e.getMessage());
+                            removeSession(session);
+                        } finally {
+                            lock.unlock();
+                        }
                     }
                 }
             }

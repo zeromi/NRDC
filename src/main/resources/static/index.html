@@ -124,6 +124,7 @@
     <div id="virtualKeyboard">
         <div class="vk-close-row">
             <button class="vk-mode-btn" id="btnSwitchVK" title="切换键盘模式">🔤</button>
+            <button class="vk-clipboard-btn" id="btnClipboardSync" title="同步设备剪贴板到远程桌面">📋</button>
             <span id="vkModeLabel" style="font-size:10px;color:var(--text-secondary);flex:1;text-align:center;font-family:var(--font-mono);">特殊键盘</span>
             <button class="vk-close-btn" id="btnCloseVK">收起 ✕</button>
         </div>
@@ -149,6 +150,7 @@
             </div>
             <div class="vk-row">
                 <button class="vk-key wide" data-key="Tab">Tab</button>
+                <button class="vk-key wide" data-key="Enter" style="color:#00E5FF;border-color:rgba(0,229,255,0.4)">Enter</button>
                 <button class="vk-key" data-key="Home">Home</button>
                 <button class="vk-key" data-key="End">End</button>
                 <button class="vk-key" data-key="Insert">Ins</button>
@@ -174,75 +176,14 @@
                 <button class="vk-key" data-combo="win">Win</button>
             </div>
         </div>
-        <!-- 标准打字键盘面板 -->
+        <!-- 标准打字键盘面板（本机键盘模式） -->
         <div id="vkTyping" class="vk-panel" style="display:none">
-            <div class="vk-row vk-typing-row">
-                <button class="vk-key" data-char="`">`</button>
-                <button class="vk-key" data-char="1">1</button>
-                <button class="vk-key" data-char="2">2</button>
-                <button class="vk-key" data-char="3">3</button>
-                <button class="vk-key" data-char="4">4</button>
-                <button class="vk-key" data-char="5">5</button>
-                <button class="vk-key" data-char="6">6</button>
-                <button class="vk-key" data-char="7">7</button>
-                <button class="vk-key" data-char="8">8</button>
-                <button class="vk-key" data-char="9">9</button>
-                <button class="vk-key" data-char="0">0</button>
-                <button class="vk-key" data-char="-">-</button>
-                <button class="vk-key" data-char="=">=</button>
-                <button class="vk-key vk-key-fn" data-key="Backspace" style="flex:1.5;max-width:64px">⌫</button>
-            </div>
-            <div class="vk-row vk-typing-row">
-                <button class="vk-key vk-key-fn wide" data-key="Tab" style="max-width:48px">Tab</button>
-                <button class="vk-key" data-char="q">Q</button>
-                <button class="vk-key" data-char="w">W</button>
-                <button class="vk-key" data-char="e">E</button>
-                <button class="vk-key" data-char="r">R</button>
-                <button class="vk-key" data-char="t">T</button>
-                <button class="vk-key" data-char="y">Y</button>
-                <button class="vk-key" data-char="u">U</button>
-                <button class="vk-key" data-char="i">I</button>
-                <button class="vk-key" data-char="o">O</button>
-                <button class="vk-key" data-char="p">P</button>
-                <button class="vk-key" data-char="[">[</button>
-                <button class="vk-key" data-char="]">]</button>
-                <button class="vk-key" data-char="\">\</button>
-            </div>
-            <div class="vk-row vk-typing-row">
-                <button class="vk-key vk-key-fn vk-key-shift" id="vkShift" data-modifier="ShiftLeft" style="flex:1.4;max-width:58px">⇧</button>
-                <button class="vk-key" data-char="a">A</button>
-                <button class="vk-key" data-char="s">S</button>
-                <button class="vk-key" data-char="d">D</button>
-                <button class="vk-key" data-char="f">F</button>
-                <button class="vk-key" data-char="g">G</button>
-                <button class="vk-key" data-char="h">H</button>
-                <button class="vk-key" data-char="j">J</button>
-                <button class="vk-key" data-char="k">K</button>
-                <button class="vk-key" data-char="l">L</button>
-                <button class="vk-key" data-char=";">;</button>
-                <button class="vk-key" data-char="'">'</button>
-                <button class="vk-key vk-key-fn wider" data-key="Enter" style="max-width:64px">↵</button>
-            </div>
-            <div class="vk-row vk-typing-row">
-                <button class="vk-key vk-key-fn wider" data-key="ShiftLeft" id="vkShift2" data-modifier="ShiftLeft" style="flex:1.8;max-width:72px">⇧</button>
-                <button class="vk-key" data-char="z">Z</button>
-                <button class="vk-key" data-char="x">X</button>
-                <button class="vk-key" data-char="c">C</button>
-                <button class="vk-key" data-char="v">V</button>
-                <button class="vk-key" data-char="b">B</button>
-                <button class="vk-key" data-char="n">N</button>
-                <button class="vk-key" data-char="m">M</button>
-                <button class="vk-key" data-char=",">,</button>
-                <button class="vk-key" data-char=".">.</button>
-                <button class="vk-key" data-char="/">/</button>
-            </div>
-            <div class="vk-row vk-typing-row">
-                <button class="vk-key vk-key-fn wide" data-key="ControlLeft" style="max-width:48px">Ctrl</button>
-                <button class="vk-key vk-key-fn wide" data-key="MetaLeft" style="max-width:40px">⊞</button>
-                <button class="vk-key vk-key-fn wide" data-key="AltLeft" style="max-width:44px">Alt</button>
-                <button class="vk-key vk-space" data-key="Space">Space</button>
-                <button class="vk-key vk-key-fn wide" data-key="AltRight" style="max-width:44px">Alt</button>
-                <button class="vk-key vk-key-fn wide" data-key="ControlRight" style="max-width:48px">Ctrl</button>
+            <div class="vk-native-row">
+                <input type="text" id="nativeKeyboardInput"
+                       inputmode="text" autocomplete="off" autocorrect="off"
+                       autocapitalize="off" spellcheck="false"
+                       placeholder="在此输入内容...">
+                <button id="btnNativeSend" class="vk-send-btn" title="发送">发送</button>
             </div>
         </div>
     </div>

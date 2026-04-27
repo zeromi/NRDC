@@ -11,7 +11,8 @@ public class InputEvent {
         MOUSE_RELEASE,
         MOUSE_WHEEL,
         KEY_PRESS,
-        KEY_RELEASE
+        KEY_RELEASE,
+        TEXT_INPUT
     }
 
     private Type type;
@@ -20,6 +21,7 @@ public class InputEvent {
     private int button;
     private int keyCode;
     private int wheelDelta;
+    private String text;
     private long timestamp;
 
     public Type getType() {
@@ -78,9 +80,17 @@ public class InputEvent {
         this.timestamp = timestamp;
     }
 
+    public String getText() {
+        return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
     @Override
     public String toString() {
-        return "InputEvent{type=%s, x=%d, y=%d, button=%d, keyCode=%d, wheelDelta=%d}"
-                .formatted(type, x, y, button, keyCode, wheelDelta);
+        return "InputEvent{type=%s, x=%d, y=%d, button=%d, keyCode=%d, wheelDelta=%d, text=%s}"
+                .formatted(type, x, y, button, keyCode, wheelDelta, text);
     }
 }

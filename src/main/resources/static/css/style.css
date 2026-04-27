@@ -860,6 +860,11 @@ body {
     border-color: rgba(255, 82, 82, 0.3);
 }
 
+.toast.warning {
+    border-color: rgba(255, 215, 64, 0.35);
+    background: rgba(255, 215, 64, 0.08);
+}
+
 .toast.removing {
     opacity: 0;
     transform: translateX(20px);
@@ -1210,6 +1215,22 @@ body {
     background: rgba(0, 229, 255, 0.25);
 }
 
+.vk-clipboard-btn {
+    background: rgba(0, 229, 255, 0.1);
+    border: 1px solid rgba(0, 229, 255, 0.3);
+    color: var(--primary);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 14px;
+    cursor: pointer;
+    min-height: 30px;
+    line-height: 1;
+}
+
+.vk-clipboard-btn:active {
+    background: rgba(0, 229, 255, 0.25);
+}
+
 .vk-close-btn {
     background: none;
     border: 1px solid rgba(255, 82, 82, 0.3);
@@ -1264,6 +1285,62 @@ body {
 .vk-space {
     flex: 4;
     max-width: none;
+}
+
+/* 本机键盘输入区域 */
+.vk-native-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+    padding: 4px 0;
+}
+
+.vk-native-row #nativeKeyboardInput {
+    flex: 1;
+    min-width: 0;
+    height: 38px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: var(--font-mono);
+    padding: 0 12px;
+    outline: none;
+    -webkit-user-select: text;
+    user-select: text;
+    transition: border-color 0.2s ease;
+}
+
+.vk-native-row #nativeKeyboardInput:focus {
+    border-color: var(--primary);
+    background: rgba(0, 229, 255, 0.05);
+    box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.1);
+}
+
+.vk-native-row #nativeKeyboardInput::placeholder {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.vk-send-btn {
+    flex-shrink: 0;
+    min-width: 60px;
+    height: 38px;
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    border: none;
+    border-radius: 8px;
+    color: #0A0E17;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.vk-send-btn:active {
+    transform: scale(0.94);
+    opacity: 0.85;
 }
 
 /* ===== 响应式断点 ===== */

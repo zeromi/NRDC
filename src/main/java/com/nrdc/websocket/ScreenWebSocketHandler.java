@@ -13,8 +13,13 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.awt.*;
+import java.awt.datatransfer.*;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.*;
+import java.util.List;
 
 @Component
 public class ScreenWebSocketHandler extends TextWebSocketHandler {
@@ -93,6 +98,11 @@ public class ScreenWebSocketHandler extends TextWebSocketHandler {
             switch (type) {
                 case "REQUEST_CONTROL" -> handleRequestControl(sessionId);
                 case "RELEASE_CONTROL" -> handleReleaseControl(sessionId);
+                case "CLIPBOARD_SYNC" -> {
+                    if (sessionManager.isOperator(sessionId)) {
+                        handleClipboardSync(sessionId, message.getPayload());
+                    }
+                }
                 default -> {
                     // 非控制消息视为输入事件，检查操作权
                     if (sessionManager.isOperator(sessionId)) {
@@ -163,5 +173,173 @@ public class ScreenWebSocketHandler extends TextWebSocketHandler {
                 "operatorId", operatorId != null ? operatorId : "",
                 "operator", operatorName != null ? operatorName : ""
         ));
+    }
+
+    // ===== 剪贴板同步 =====
+
+    /** 大文件阈值：5MB，超过此值广播提醒 */
+    private static final long CLIPBOARD_LARGE_THRESHOLD = 5 * 1024 * 1024;
+
+    @SuppressWarnings("unchecked")
+    private void handleClipboardSync(String sessionId, String payload) {
+        try {
+            Map<String, Object> msg = objectMapper.readValue(payload, Map.class);
+            String text = (String) msg.get("text");
+            List<Map<String, Object>> files = (List<Map<String, Object>>) msg.get("files");
+
+            boolean hasContent = (text != null && !text.isEmpty())
+                    || (files != null && !files.isEmpty());
+            if (!hasContent) return;
+
+            // 计算总大小
+            long totalSize = 0;
+            if (text != null && !text.isEmpty()) {
+                totalSize += text.getBytes(StandardCharsets.UTF_8).length;
+            }
+
+            // 处理文件：保存到临时目录
+            List<File> fileList = new ArrayList<>();
+            if (files != null) {
+                for (Map<String, Object> fileItem : files) {
+                    String name = (String) fileItem.get("name");
+                    String base64Data = (String) fileItem.get("data");
+                    Number sizeNum = (Number) fileItem.get("size");
+
+                    if (base64Data == null || base64Data.isEmpty()) continue;
+
+                    try {
+                        byte[] fileBytes = Base64.getDecoder().decode(base64Data);
+                        // 安全化文件名
+                        String safeName = name != null ? name.replaceAll("[\\\\/:*?\"<>|]", "_") : "clipboard-file";
+                        File tempFile = File.createTempFile("nrdc-clip-", "-" + safeName);
+                        tempFile.deleteOnExit();
+                        Files.write(tempFile.toPath(), fileBytes);
+                        fileList.add(tempFile);
+
+                        if (sizeNum != null) {
+                            totalSize += sizeNum.longValue();
+                        } else {
+                            totalSize += fileBytes.length;
+                        }
+                    } catch (Exception e) {
+                        log.warn("保存剪贴板文件失败: {}", e.getMessage());
+                    }
+                }
+            }
+
+            // 设置系统剪贴板
+            try {
+                Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+                Transferable transferable;
+
+                if (!fileList.isEmpty() && text != null && !text.isEmpty()) {
+                    // 同时有文本和文件：复合 Transferable
+                    transferable = new CompositeSelection(text, fileList);
+                } else if (!fileList.isEmpty()) {
+                    // 仅文件
+                    transferable = new CompositeSelection(null, fileList);
+                } else {
+                    // 仅文本
+                    transferable = new StringSelection(text);
+                }
+
+                clipboard.setContents(transferable, null);
+                log.info("剪贴板已同步: sessionId={}, 大小={}bytes", sessionId, totalSize);
+            } catch (Exception e) {
+                log.error("设置系统剪贴板失败: {}", e.getMessage());
+                return;
+            }
+
+            // 大文件提醒：广播通知所有连接的客户端
+            if (totalSize >= CLIPBOARD_LARGE_THRESHOLD) {
+                String operator = sessionManager.getUsernameBySessionId(sessionId);
+                String summary = buildClipboardSummary(text, files, totalSize);
+                sessionManager.broadcastTextMessage(Map.of(
+                        "type", "CLIPBOARD_NOTIFICATION",
+                        "operator", operator,
+                        "message", summary,
+                        "isLarge", true
+                ));
+            }
+        } catch (Exception e) {
+            log.error("处理剪贴板同步失败: {}", e.getMessage());
+        }
+    }
+
+    /** 构建剪贴板同步摘要文本 */
+    private String buildClipboardSummary(String text, List<?> files, long totalSize) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("已同步剪贴板 (");
+        sb.append(formatFileSize(totalSize));
+        sb.append("): ");
+        List<String> parts = new ArrayList<>();
+        if (text != null && !text.isEmpty()) {
+            parts.add("文本 " + formatFileSize(text.getBytes(StandardCharsets.UTF_8).length));
+        }
+        if (files != null && !files.isEmpty()) {
+            parts.add(files.size() + "个文件");
+        }
+        sb.append(String.join(" + ", parts));
+        return sb.toString();
+    }
+
+    /** 格式化文件大小 */
+    private static String formatFileSize(long bytes) {
+        if (bytes < 1024) return bytes + "B";
+        if (bytes < 1024 * 1024) return String.format("%.1fKB", bytes / 1024.0);
+        return String.format("%.1fMB", bytes / (1024.0 * 1024));
+    }
+
+    /**
+     * 复合 Transferable：同时支持文本和文件列表。
+     * 被控制端粘贴时，目标应用程序可以选择接受文本或文件。
+     */
+    private static class CompositeSelection implements Transferable {
+        private final String text;
+        private final List<File> files;
+
+        CompositeSelection(String text, List<File> files) {
+            this.text = text;
+            this.files = files;
+        }
+
+        @Override
+        public DataFlavor[] getTransferDataFlavors() {
+            List<DataFlavor> flavors = new ArrayList<>();
+            if (files != null && !files.isEmpty()) {
+                flavors.add(DataFlavor.javaFileListFlavor);
+            }
+            if (text != null && !text.isEmpty()) {
+                flavors.add(DataFlavor.stringFlavor);
+                try {
+                    flavors.add(new DataFlavor("text/plain; charset=utf-8"));
+                } catch (ClassNotFoundException ignored) {}
+            }
+            return flavors.toArray(new DataFlavor[0]);
+        }
+
+        @Override
+        public boolean isDataFlavorSupported(DataFlavor flavor) {
+            if (files != null && !files.isEmpty() && DataFlavor.javaFileListFlavor.equals(flavor)) {
+                return true;
+            }
+            if (text != null && !text.isEmpty()) {
+                return DataFlavor.stringFlavor.equals(flavor)
+                        || flavor.getMimeType().startsWith("text/plain");
+            }
+            return false;
+        }
+
+        @Override
+        public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
+            if (DataFlavor.javaFileListFlavor.equals(flavor) && files != null) {
+                return files;
+            }
+            if ((DataFlavor.stringFlavor.equals(flavor)
+                    || flavor.getMimeType().startsWith("text/plain")) && text != null) {
+                return text;
+            }
+            throw new UnsupportedFlavorException(flavor);
+        }
     }
 }
