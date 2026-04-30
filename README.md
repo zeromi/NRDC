@@ -130,4 +130,4 @@ src/main/java/com/nrdc/
 
 ## License
 
-MIT
+[Apache License 2.0](./LICENSE)
